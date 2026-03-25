@@ -9,7 +9,6 @@ services:
   - type: web
     name: hireiq-api
     env: python
-    plan: free
     buildCommand: pip install -r services/api/requirements.txt
     startCommand: python services/api/run.py
     envVars:
@@ -18,7 +17,7 @@ services:
           name: hireiq-db
           property: connectionString
       - key: AGENT_SERVICE_URL
-        value: https://hireiq-agents.onrender.com   # ← update after first deploy
+        value: https://hireiq-agents.onrender.com
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: ENVIRONMENT
@@ -28,12 +27,11 @@ services:
   - type: web
     name: hireiq-agents
     env: python
-    plan: free
     buildCommand: pip install -r services/agents/requirements.txt
     startCommand: python services/agents/run.py
     envVars:
       - key: GROQ_API_KEY
-        sync: false                                  # ← set in Render dashboard
+        sync: false
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: ENVIRONMENT
@@ -43,10 +41,9 @@ services:
   - type: web
     name: hireiq-frontend
     env: static
-    plan: free
     rootDir: services/frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://hireiq-api.onrender.com       # ← update after first deploy
+        value: https://hireiq-api.onrender.com
