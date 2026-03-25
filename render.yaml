@@ -9,7 +9,6 @@ services:
   - type: web
     name: hireiq-api
     env: docker
-    plan: free
     rootDir: services/api
     envVars:
       - key: DATABASE_URL
@@ -27,7 +26,6 @@ services:
   - type: web
     name: hireiq-agents
     env: docker
-    plan: free
     rootDir: services/agents
     envVars:
       - key: GROQ_API_KEY
