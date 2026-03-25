@@ -1,0 +1,96 @@
+import traceback
+from typing import List, Optional
+
+from langchain_groq import ChatGroq
+from pydantic import BaseModel, field_validator
+
+from agents.config import settings
+from agents.state import AgentState
+from agents.tools.rag import index_documents
+from agents.tools.structured import invoke_structured
+
+
+_NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
+
+def _coerce_list(v):
+    """Convert schema artifacts or strings into proper lists, stripping null-like values."""
+    if isinstance(v, list):
+        return [x for x in v if isinstance(x, (str, dict))
+                and (isinstance(x, dict) or str(x).strip().lower() not in _NULL_TOKENS)]
+    if isinstance(v, dict):
+        return []
+    if isinstance(v, str):
+        return [x.strip() for x in v.split(",")
+                if x.strip() and x.strip().lower() not in _NULL_TOKENS]
+    return []
+
+
+class ParsedResume(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+    skills: List[str]
+    experience: List[dict] = []
+    education: List[dict] = []
+    summary: Optional[str] = None
+
+    @field_validator("skills", mode="before")
+    @classmethod
+    def coerce_skills(cls, v):
+        return _coerce_list(v)
+
+    @field_validator("experience", "education", mode="before")
+    @classmethod
+    def coerce_dicts(cls, v):
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, dict)]
+        return []
+
+
+def resume_parser_node(state: AgentState) -> AgentState:
+    """Parse the raw resume text into structured data and index it in ChromaDB."""
+    try:
+        llm = ChatGroq(model=settings.groq_model, temperature=0, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+
+        prompt = (
+            "You are an expert resume parser. Extract all structured information from "
+            "the following resume text. Be thorough and accurate.\n\n"
+            f"RESUME TEXT:\n{state['resume_text']}\n\n"
+            "For the 'skills' field, list EVERY specific technology, tool, framework, "
+            "programming language, and platform mentioned anywhere in the resume. "
+            "Do NOT use broad categories like 'Machine Learning' — instead list the "
+            "specific tools: 'TensorFlow', 'PyTorch', 'Scikit-learn', 'RAG', 'LLaMA', etc. "
+            "Include tools from experience descriptions and project sections, not just a skills section.\n\n"
+            "Respond with ONLY a JSON object with these exact keys:\n"
+            '{"name": "string", "email": "string", "phone": "string or null", '
+            '"skills": ["every", "specific", "tool", "and", "technology"], '
+            '"experience": [{"title": "...", "company": "...", "bullets": ["..."]}], '
+            '"education": [{"degree": "...", "institution": "..."}], '
+            '"summary": "string or null"}'
+        )
+
+        parsed: ParsedResume = invoke_structured(llm, prompt, ParsedResume)
+        resume_dict = parsed.model_dump()
+
+        # Index resume into ChromaDB for later RAG retrieval.
+        session_id = state.get("session_id", "unknown")
+        chunks = [state["resume_text"]]
+        ids = [f"resume_{session_id}_0"]
+        try:
+            index_documents(chunks, ids, collection_name="resumes")
+        except Exception:
+            pass
+
+        return {
+            **state,
+            "resume_parsed": resume_dict,
+            "completed_agents": state.get("completed_agents", []) + ["resume_parser"],
+        }
+
+    except Exception as exc:
+        error_msg = f"resume_parser_node error: {traceback.format_exc()}"
+        return {
+            **state,
+            "error": error_msg,
+            "completed_agents": state.get("completed_agents", []) + ["resume_parser"],
+        }

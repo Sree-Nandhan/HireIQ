@@ -1,0 +1,78 @@
+import io
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import status as http_status
+from pydantic import BaseModel
+
+from api.auth import get_current_user
+from api.models import User
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["resume"])
+
+_MAX_PDF_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+class ResumeTextResponse(BaseModel):
+    text: str
+    pages: int
+
+
+@router.post("/resume/extract", response_model=ResumeTextResponse)
+async def extract_resume_text(
+    file: UploadFile = File(..., description="PDF resume file (max 5 MB)"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload a PDF resume and extract its plain text.
+
+    Returns the extracted text and page count. The text can then be passed
+    directly to `POST /api/v1/applications` as the `resume_text` field.
+
+    Raises **400** if the file is not a PDF or exceeds 5 MB.
+    Raises **422** if the PDF cannot be parsed.
+    """
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are accepted.",
+        )
+
+    raw = await file.read()
+
+    if len(raw) > _MAX_PDF_BYTES:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"File exceeds the 5 MB limit ({len(raw) // 1024} KB received).",
+        )
+
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(raw))
+        pages = len(reader.pages)
+        text = "\n\n".join(
+            page.extract_text() or "" for page in reader.pages
+        ).strip()
+    except Exception as exc:
+        logger.warning("PDF parse failed for user=%d: %s", current_user.id, exc)
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Could not parse the PDF. Please ensure it is a valid, text-based PDF.",
+        ) from exc
+
+    if not text:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No text could be extracted. The PDF may be image-only — try a text-based PDF.",
+        )
+
+    logger.info(
+        "Extracted %d chars from %d-page PDF for user=%d",
+        len(text),
+        pages,
+        current_user.id,
+    )
+    return ResumeTextResponse(text=text, pages=pages)

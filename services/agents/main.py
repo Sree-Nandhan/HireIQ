@@ -1,0 +1,348 @@
+import json
+import logging
+import os
+import uuid
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+load_dotenv()
+
+# Import config first so env vars are available before LangChain loads
+from agents.config import settings                      # noqa: E402
+
+# Propagate LangSmith vars explicitly so LangChain picks them up even when
+# the values come from pydantic-settings rather than raw os.environ.
+if settings.langchain_tracing_v2.lower() == "true":
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+    if settings.langchain_api_key:
+        os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+
+from agents.graph import build_graph                    # noqa: E402
+from agents.tools.token_tracker import TokenTracker     # noqa: E402
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+_logger = logging.getLogger(__name__)
+_logger.info(
+    "LangSmith tracing: %s (project=%s)",
+    settings.langchain_tracing_v2,
+    settings.langchain_project,
+)
+
+app = FastAPI(
+    title="HireIQ Agent Service",
+    description=(
+        "Multi-agent career intelligence pipeline powered by LangGraph + Claude. "
+        "Accepts a resume and job description, runs specialized AI agents, and returns "
+        "gap analysis, tailored resume bullets, a cover letter, interview Q&A, and an ATS score."
+    ),
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Build the graph once at startup to avoid repeated compilation overhead.
+graph = build_graph()
+
+
+# ---------------------------------------------------------------------------
+# Request / Response schemas
+# ---------------------------------------------------------------------------
+
+class AnalyzeRequest(BaseModel):
+    resume_text: str
+    job_description: str
+    user_id: int = 1
+
+
+class AnalyzeResponse(BaseModel):
+    session_id: str
+    gap_analysis: dict
+    tailored_bullets: list
+    cover_letter: str
+    interview_qa: list
+    ats_score: dict
+    match_percentage: float
+    company_research: dict = {}
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class CoachRequest(BaseModel):
+    question: str
+    resume_text: str
+    job_description: str
+    gap_analysis: dict = {}
+    tailored_bullets: list = []
+    cover_letter: str = ""
+    interview_qa: list = []
+    ats_score: dict = {}
+
+
+class CoachResponse(BaseModel):
+    answer: str
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "ok", "service": "agent-service"}
+
+
+class CompanyPreviewRequest(BaseModel):
+    company: str = ""
+    job_description: str
+
+
+@app.post("/company-preview")
+async def company_preview(req: CompanyPreviewRequest):
+    """Quick company research from the job description — runs independently of the full pipeline."""
+    from agents.nodes.company_researcher import company_researcher_node
+    state = {
+        "job_description": req.job_description,
+        "jd_parsed": {"company": req.company},
+        "resume_text": "", "resume_parsed": None, "gap_analysis": None,
+        "tailored_bullets": None, "cover_letter": None, "interview_qa": None,
+        "ats_score": None, "company_research": None, "next_agent": "",
+        "completed_agents": [], "messages": [], "error": None,
+        "user_id": 0, "session_id": "preview",
+    }
+    result = company_researcher_node(state)
+    return result.get("company_research") or {}
+
+
+@app.post("/coach", response_model=CoachResponse)
+async def coach(req: CoachRequest):
+    """Answer a follow-up career coaching question using the full analysis context.
+
+    Accepts a free-form question and all analysis outputs from a completed pipeline
+    run. Returns a concise, actionable answer grounded in the candidate's specific
+    resume and target job.
+    """
+    import json as _json
+    from langchain_groq import ChatGroq
+    from langchain_core.messages import HumanMessage
+
+    llm = ChatGroq(model=settings.groq_model, temperature=0.5, groq_api_key=settings.groq_api_key)
+
+    system_context = (
+        "You are an expert career coach helping a job candidate prepare for their application. "
+        "You have access to the candidate's resume, the target job description, and a full "
+        "AI-generated analysis of how well the candidate matches the role.\n\n"
+        f"RESUME:\n{req.resume_text}\n\n"
+        f"JOB DESCRIPTION:\n{req.job_description}\n\n"
+        f"GAP ANALYSIS:\n{_json.dumps(req.gap_analysis, indent=2)}\n\n"
+        f"TAILORED BULLETS:\n{_json.dumps(req.tailored_bullets, indent=2)}\n\n"
+        f"COVER LETTER:\n{req.cover_letter}\n\n"
+        f"INTERVIEW Q&A:\n{_json.dumps(req.interview_qa, indent=2)}\n\n"
+        f"ATS SCORE:\n{_json.dumps(req.ats_score, indent=2)}\n\n"
+        "Answer the candidate's question below. Be specific, practical, and concise."
+    )
+
+    prompt = f"{system_context}\n\nCANDIDATE QUESTION: {req.question}"
+
+    try:
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return CoachResponse(answer=response.content.strip())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Coach failed: {str(exc)}",
+        )
+
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+async def analyze(req: AnalyzeRequest):
+    """Run the full HireIQ multi-agent pipeline and return all outputs.
+
+    The pipeline executes agents in this order:
+        resume_parser -> jd_analyst -> gap_analyst -> resume_tailor ->
+        cover_letter -> interview_coach -> ats_scorer
+    """
+    session_id = str(uuid.uuid4())
+
+    initial_state = {
+        "resume_text": req.resume_text,
+        "job_description": req.job_description,
+        "user_id": req.user_id,
+        "session_id": session_id,
+        "resume_parsed": None,
+        "jd_parsed": None,
+        "company_research": None,
+        "gap_analysis": None,
+        "tailored_bullets": None,
+        "cover_letter": None,
+        "interview_qa": None,
+        "ats_score": None,
+        "next_agent": "",
+        "completed_agents": [],
+        "messages": [],
+        "error": None,
+    }
+
+    tracker = TokenTracker()
+    try:
+        result = await graph.ainvoke(initial_state, config={"callbacks": [tracker]})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent pipeline failed: {str(exc)}",
+        )
+
+    # Propagate any agent-level errors as a 500.
+    if result.get("error"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent error: {result['error']}",
+        )
+
+    # Safely extract outputs, falling back to empty structures if an agent
+    # did not produce a result (e.g., due to a handled exception).
+    gap_analysis = result.get("gap_analysis") or {}
+    tailored_bullets = result.get("tailored_bullets") or []
+    cover_letter = result.get("cover_letter") or ""
+    interview_qa = result.get("interview_qa") or []
+    ats_score = result.get("ats_score") or {}
+    company_research = result.get("company_research") or {}
+    match_percentage = float(gap_analysis.get("match_percentage", 0.0))
+
+    return AnalyzeResponse(
+        session_id=session_id,
+        gap_analysis=gap_analysis,
+        tailored_bullets=tailored_bullets,
+        cover_letter=cover_letter,
+        interview_qa=interview_qa,
+        ats_score=ats_score,
+        company_research=company_research,
+        match_percentage=match_percentage,
+        input_tokens=tracker.input_tokens,
+        output_tokens=tracker.output_tokens,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SSE streaming endpoint
+# ---------------------------------------------------------------------------
+
+# Agent names in pipeline order — used to label progress events
+_PIPELINE_AGENTS = [
+    "resume_parser",
+    "jd_analyst",
+    "company_researcher",
+    "gap_analyst",
+    "resume_tailor",
+    "cover_letter",
+    "interview_coach",
+    "ats_scorer",
+]
+
+
+@app.post("/analyze/stream")
+async def analyze_stream(req: AnalyzeRequest):
+    """Run the full pipeline and stream agent-completion events via SSE.
+
+    Each event has the format:
+        data: {"agent": "<name>", "status": "completed", "step": N, "total": 7}
+
+    A final event signals pipeline completion:
+        data: {"agent": "pipeline", "status": "done", "result": {...}}
+
+    The client should listen with EventSource or fetch + ReadableStream.
+    """
+    session_id = str(uuid.uuid4())
+
+    initial_state = {
+        "resume_text": req.resume_text,
+        "job_description": req.job_description,
+        "user_id": req.user_id,
+        "session_id": session_id,
+        "resume_parsed": None,
+        "jd_parsed": None,
+        "company_research": None,
+        "gap_analysis": None,
+        "tailored_bullets": None,
+        "cover_letter": None,
+        "interview_qa": None,
+        "ats_score": None,
+        "next_agent": "",
+        "completed_agents": [],
+        "messages": [],
+        "error": None,
+    }
+
+    async def _event_generator():
+        try:
+            # Run the pipeline once and store the final state.
+            tracker = TokenTracker()
+            final_state = await graph.ainvoke(
+                initial_state, config={"callbacks": [tracker]}
+            )
+
+            # Emit one progress event per completed agent in pipeline order.
+            completed = final_state.get("completed_agents", [])
+            for name in _PIPELINE_AGENTS:
+                if name in completed:
+                    step = _PIPELINE_AGENTS.index(name) + 1
+                    payload = json.dumps({
+                        "agent": name,
+                        "status": "completed",
+                        "step": step,
+                        "total": len(_PIPELINE_AGENTS),
+                    })
+                    yield f"data: {payload}\n\n"
+
+            # Emit the final done event.
+            gap_analysis = final_state.get("gap_analysis") or {}
+            result_payload = json.dumps({
+                "agent": "pipeline",
+                "status": "done",
+                "session_id": session_id,
+                "match_percentage": float(gap_analysis.get("match_percentage", 0.0)),
+                "error": final_state.get("error"),
+            })
+            yield f"data: {result_payload}\n\n"
+
+        except Exception as exc:
+            error_payload = json.dumps({"agent": "pipeline", "status": "error", "detail": str(exc)})
+            yield f"data: {error_payload}\n\n"
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Entry point for direct execution
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "agents.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("AGENT_SERVICE_PORT", "8001")),
+        reload=True,
+    )

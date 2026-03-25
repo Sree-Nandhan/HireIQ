@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python tests (api + agents) ──────────────────────────────────────
+  test:
+    name: Python Tests (93% coverage gate)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('services/api/requirements.txt', 'services/agents/requirements.txt') }}
+          restore-keys: pip-
+
+      - name: Install api dependencies
+        run: pip install -r services/api/requirements.txt
+
+      - name: Install agents dependencies
+        run: pip install -r services/agents/requirements.txt
+
+      - name: Run pytest with coverage
+        env:
+          DATABASE_URL: sqlite:///:memory:
+          AGENT_SERVICE_URL: http://localhost:8001
+          ANTHROPIC_API_KEY: test-key
+          CHROMA_HOST: localhost
+        run: python -m pytest --no-header -q
+
+  # ── Frontend build ────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: services/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: services/frontend
+        run: npm run build
+
+  # ── Docker image builds ───────────────────────────────────────────────
+  docker-build:
+    name: Docker Build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, agents, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.service }} image
+        run: docker build -t hireiq-${{ matrix.service }}:ci ./services/${{ matrix.service }}
