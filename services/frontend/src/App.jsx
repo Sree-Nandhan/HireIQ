@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AuthPage from "./pages/AuthPage";
 import AnalyzePage from "./pages/AnalyzePage";
@@ -8,6 +8,7 @@ import "./index.css";
 
 function Nav() {
   const { token, user, logout } = useAuth();
+  const { pathname } = useLocation();
   if (!token) return null;
   const displayName = user?.first_name || user?.email?.split("@")[0] || "?";
   const initials = displayName.slice(0, 2).toUpperCase();
@@ -16,7 +17,7 @@ function Nav() {
       <Link to="/tracker" className="brand">HireIQ</Link>
       <div className="nav-links">
         <Link to="/tracker">Tracker</Link>
-        <Link to="/analyze">New Analysis</Link>
+        {pathname !== "/analyze" && <Link to="/analyze">New Analysis</Link>}
         <button onClick={logout} className="btn-ghost">Sign Out</button>
         <div className="nav-avatar" title={displayName}>{initials}</div>
       </div>
