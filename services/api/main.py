@@ -9,6 +9,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from api.config import settings
+from api.database import engine, Base
+import api.models  # noqa: F401 — registers all models with Base
 from api.routers import applications, analysis, auth, coach, resume
 
 logging.basicConfig(
@@ -22,6 +24,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="HireIQ API",
+    on_startup=[lambda: Base.metadata.create_all(bind=engine)],
     version=API_VERSION,
     description="Career intelligence API: manage job applications and trigger multi-agent analysis.",
     docs_url="/api/docs",
