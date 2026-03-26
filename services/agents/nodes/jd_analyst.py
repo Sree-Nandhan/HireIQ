@@ -43,17 +43,12 @@ def jd_analyst_node(state: AgentState) -> AgentState:
     try:
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
+        jd_text = state['job_description'][:3000]
         prompt = (
-            "You are an expert job description analyst. Extract all structured "
-            "information from the following job description.\n\n"
-            f"JOB DESCRIPTION:\n{state['job_description']}\n\n"
-            "IMPORTANT for required_skills and nice_to_have_skills: "
-            "Extract ONLY short, clean skill names — NOT full sentences or requirement phrases. "
-            "Good examples: 'Python', 'React', 'Git', 'SQL', 'REST APIs', 'Docker', 'Machine Learning'. "
-            "Bad examples: 'Basic understanding of at least one programming language', "
-            "'Familiarity with version control systems such as Git'. "
-            "Each skill should be 1-4 words maximum.\n\n"
-            "Respond with ONLY a JSON object with these exact keys:\n"
+            "Extract structured info from this job description.\n\n"
+            f"JD:\n{jd_text}\n\n"
+            "Skills: short names only (1-4 words, e.g. Python, React, Docker — not full sentences).\n\n"
+            "Respond with ONLY a JSON object:\n"
             '{"job_title": "string", "company": "string or null", '
             '"required_skills": ["Python", "React", "short skill names only"], '
             '"nice_to_have_skills": ["short", "skill", "names"], '

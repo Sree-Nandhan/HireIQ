@@ -24,27 +24,19 @@ def company_researcher_node(state: AgentState) -> AgentState:
     """Infer company insights from the job description using the LLM."""
     try:
         jd_parsed = state.get("jd_parsed") or {}
-        job_description = state.get("job_description", "")
-
-        # Extract company name from jd_parsed if available
-        company_name_hint = jd_parsed.get("company_name", "") or jd_parsed.get("company", "")
+        company = jd_parsed.get("company") or ""
+        title = jd_parsed.get("job_title", "")
+        skills = jd_parsed.get("required_skills", [])[:10]
+        resp = jd_parsed.get("responsibilities", [])[:5]
 
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
         prompt = (
-            "You are a company research analyst. Based solely on the job description below, "
-            "infer as much as possible about the company.\n\n"
-            f"COMPANY NAME HINT (from parsed JD, may be empty): {company_name_hint}\n\n"
-            f"FULL JOB DESCRIPTION:\n{job_description}\n\n"
-            "Based on the job description above:\n"
-            "1. Identify or infer the company_name (use the hint if available, otherwise extract from the JD text).\n"
-            "2. Describe in 2-3 sentences what the company does and what space they operate in (what_they_do).\n"
-            "3. List 3-5 recent projects, initiatives, or focus areas the company is working on, inferred from the JD responsibilities and requirements (recent_projects). Each item should be a short phrase like 'Building real-time ML inference platform' or 'Expanding international payments infrastructure'.\n"
-            "4. Write 1-2 sentences on company culture and values inferred from the JD tone and requirements (culture_notes).\n"
-            "5. Write 1-2 sentences on why this is a good opportunity worth applying for (why_apply).\n\n"
-            "Respond with ONLY a JSON object with these exact keys:\n"
-            '{"company_name": "string", "what_they_do": "string", "recent_projects": ["list of short phrases"], '
-            '"culture_notes": "string", "why_apply": "string"}'
+            "Infer company insights from this parsed job info.\n\n"
+            f"Company: {company}\nRole: {title}\nRequired skills: {skills}\nResponsibilities: {resp}\n\n"
+            "Respond with ONLY a JSON object:\n"
+            '{"company_name": "string", "what_they_do": "2-3 sentences", "recent_projects": ["3-5 short phrases"], '
+            '"culture_notes": "1-2 sentences", "why_apply": "1-2 sentences"}'
         )
 
         research: CompanyResearch = invoke_structured(llm, prompt, CompanyResearch)

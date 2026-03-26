@@ -22,17 +22,18 @@ def cover_letter_node(state: AgentState) -> AgentState:
 
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.7, google_api_key=settings.google_api_key)
 
+        candidate_slim = {
+            "name": candidate_name,
+            "skills": resume_parsed.get("skills", [])[:10],
+            "experience": [{"title": e.get("title"), "company": e.get("company")} for e in resume_parsed.get("experience", [])[:3]],
+        }
+        jd_slim = {"title": job_title, "company": company, "required": jd_parsed.get("required_skills", [])[:8]}
+
         prompt = (
-            f"You are a professional career coach. Write a compelling cover letter for "
-            f"{candidate_name} applying for the '{job_title}' role at {company}.\n\n"
-            f"CANDIDATE PROFILE:\n{json.dumps(resume_parsed, indent=2)}\n\n"
-            f"JOB REQUIREMENTS:\n{json.dumps(jd_parsed, indent=2)}\n\n"
-            f"MATCHING SKILLS: {matching_skills}\n\n"
-            "Write exactly 3 paragraphs:\n"
-            "1. Opening — express enthusiasm for the role and company.\n"
-            "2. Body — highlight 2-3 matching skills with concrete examples.\n"
-            "3. Closing — reiterate enthusiasm and invite next steps.\n\n"
-            "Return ONLY the cover letter text, no additional commentary."
+            f"Write a 3-paragraph cover letter for {candidate_name} applying to '{job_title}' at {company}.\n\n"
+            f"CANDIDATE: {json.dumps(candidate_slim)}\nJD: {json.dumps(jd_slim)}\nMATCHES: {matching_skills[:8]}\n\n"
+            "Para 1: enthusiasm. Para 2: 2-3 matching skills with examples. Para 3: closing.\n"
+            "Return ONLY the cover letter text."
         )
 
         message = HumanMessage(content=prompt)

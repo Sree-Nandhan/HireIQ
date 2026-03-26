@@ -31,17 +31,19 @@ def interview_coach_node(state: AgentState) -> AgentState:
 
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
+        candidate_slim = {
+            "name": resume_parsed.get("name"),
+            "skills": resume_parsed.get("skills", [])[:10],
+            "experience": [{"title": e.get("title"), "company": e.get("company")} for e in resume_parsed.get("experience", [])[:3]],
+        }
+        jd_slim = {"title": jd_parsed.get("job_title"), "required": jd_parsed.get("required_skills", [])[:10]}
+        gap_slim = {"missing": gap_analysis.get("missing_skills", [])[:6], "matching": gap_analysis.get("matching_skills", [])[:6]}
+
         prompt = (
-            "You are an expert interview coach. Generate exactly 4 likely interview "
-            "questions for the candidate below, tailored to the specific job role. "
-            "Mix of: 2 behavioral, 2 technical questions.\n\n"
-            f"CANDIDATE PROFILE:\n{json.dumps(resume_parsed, indent=2)}\n\n"
-            f"JOB DESCRIPTION:\n{json.dumps(jd_parsed, indent=2)}\n\n"
-            f"GAP ANALYSIS:\n{json.dumps(gap_analysis, indent=2)}\n\n"
-            "For each question provide: question, type (behavioral/technical/role-specific), "
-            "and a model_answer (1-2 sentences tailored to the candidate).\n\n"
-            "Respond with ONLY a JSON object with this exact structure:\n"
-            '{"qa_pairs": [{"question": "string", "type": "behavioral", "model_answer": "string"}]}'
+            "Generate 4 interview questions (2 behavioral, 2 technical) for this candidate.\n\n"
+            f"CANDIDATE: {json.dumps(candidate_slim)}\nJD: {json.dumps(jd_slim)}\nGAPS: {json.dumps(gap_slim)}\n\n"
+            "For each: question, type (behavioral/technical), model_answer (1-2 sentences).\n\n"
+            'Respond with ONLY: {"qa_pairs": [{"question": "string", "type": "behavioral", "model_answer": "string"}]}'
         )
 
         result: InterviewQAList = invoke_structured(llm, prompt, InterviewQAList)

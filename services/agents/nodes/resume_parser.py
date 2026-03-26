@@ -52,16 +52,12 @@ def resume_parser_node(state: AgentState) -> AgentState:
     try:
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
+        resume_text = state['resume_text'][:4000]
         prompt = (
-            "You are an expert resume parser. Extract all structured information from "
-            "the following resume text. Be thorough and accurate.\n\n"
-            f"RESUME TEXT:\n{state['resume_text']}\n\n"
-            "For the 'skills' field, list EVERY specific technology, tool, framework, "
-            "programming language, and platform mentioned anywhere in the resume. "
-            "Do NOT use broad categories like 'Machine Learning' — instead list the "
-            "specific tools: 'TensorFlow', 'PyTorch', 'Scikit-learn', 'RAG', 'LLaMA', etc. "
-            "Include tools from experience descriptions and project sections, not just a skills section.\n\n"
-            "Respond with ONLY a JSON object with these exact keys:\n"
+            "Parse this resume. Extract structured info.\n\n"
+            f"RESUME:\n{resume_text}\n\n"
+            "For skills: list every specific tool/framework/language (e.g. Python, React, Docker) — no broad categories.\n\n"
+            "Respond with ONLY a JSON object:\n"
             '{"name": "string", "email": "string", "phone": "string or null", '
             '"skills": ["every", "specific", "tool", "and", "technology"], '
             '"experience": [{"title": "...", "company": "...", "bullets": ["..."]}], '

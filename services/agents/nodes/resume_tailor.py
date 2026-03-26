@@ -52,16 +52,15 @@ def resume_tailor_node(state: AgentState) -> AgentState:
 
         llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key)
 
+        jd_slim = {"title": jd_parsed.get("job_title"), "required": jd_parsed.get("required_skills", [])[:12], "keywords": jd_parsed.get("keywords", [])[:10]}
+        gap_slim = {"missing": gap_analysis.get("missing_skills", [])[:8], "matching": gap_analysis.get("matching_skills", [])[:8]}
         prompt = (
-            f"You are an expert resume writer. Select and rewrite the {n_bullets} most relevant "
-            "resume bullet points to better match the target job description.\n\n"
-            f"ALL RESUME BULLETS:\n{json.dumps(all_bullets, indent=2)}\n\n"
-            f"JOB DESCRIPTION KEYWORDS & SKILLS:\n{json.dumps(jd_parsed, indent=2)}\n\n"
-            f"GAP ANALYSIS:\n{json.dumps(gap_analysis, indent=2)}\n\n"
-            f"Select exactly {n_bullets} bullets. For each, provide the original text, "
-            "a rewritten version with strong action verbs and JD keywords, "
-            "and brief reasoning for the improvement.\n\n"
-            "Respond with ONLY a JSON object with this exact structure:\n"
+            f"Rewrite the {n_bullets} most relevant resume bullets to match this job.\n\n"
+            f"BULLETS:\n{json.dumps(all_bullets[:12])}\n\n"
+            f"JD:\n{json.dumps(jd_slim)}\n\n"
+            f"GAPS:\n{json.dumps(gap_slim)}\n\n"
+            f"Return exactly {n_bullets} bullets. Use strong action verbs and JD keywords.\n\n"
+            "Respond with ONLY: "
             '{"bullets": [{"original": "string", "tailored": "string", "reasoning": "string"}]}'
         )
 
