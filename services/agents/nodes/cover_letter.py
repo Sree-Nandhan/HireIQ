@@ -1,7 +1,7 @@
 import json
 import traceback
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agents.tools.gemini import GeminiClient
 from langchain_core.messages import HumanMessage
 
 from agents.config import settings
@@ -20,7 +20,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
         company = jd_parsed.get("company") or "your company"
         matching_skills = gap_analysis.get("matching_skills", [])
 
-        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.7, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0.7, google_api_key=settings.google_api_key)
 
         candidate_slim = {
             "name": candidate_name,

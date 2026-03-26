@@ -27,7 +27,10 @@ def _make_module(name: str) -> types.ModuleType:
 
 
 _STUB_MODULES = [
-    "langchain_google_genai",
+    "google",
+    "google.genai",
+    "google.genai.types",
+    "agents.tools.gemini",
     "langchain_core",
     "langchain_core.messages",
     "langchain_core.callbacks",
@@ -39,8 +42,8 @@ for _mod_name in _STUB_MODULES:
     if _mod_name not in sys.modules:
         _make_module(_mod_name)
 
-# langchain_google_genai.ChatGoogleGenerativeAI — used directly in every node
-sys.modules["langchain_google_genai"].ChatGoogleGenerativeAI = MagicMock  # type: ignore
+# stub GeminiClient used in every node
+sys.modules["agents.tools.gemini"].GeminiClient = MagicMock  # type: ignore
 
 # langchain_core.messages.HumanMessage / BaseMessage — used in cover_letter + state
 _lc_messages = sys.modules["langchain_core.messages"]

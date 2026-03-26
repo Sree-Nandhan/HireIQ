@@ -1,7 +1,7 @@
 import traceback
 from typing import List, Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agents.tools.gemini import GeminiClient
 from pydantic import BaseModel, field_validator
 
 from agents.config import settings
@@ -41,7 +41,7 @@ class ParsedJD(BaseModel):
 def jd_analyst_node(state: AgentState) -> AgentState:
     """Parse the job description into structured data and index it in ChromaDB."""
     try:
-        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
         jd_text = state['job_description'][:3000]
         prompt = (

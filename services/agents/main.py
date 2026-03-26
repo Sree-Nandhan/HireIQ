@@ -137,10 +137,10 @@ async def coach(req: CoachRequest):
     resume and target job.
     """
     import json as _json
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from agents.tools.gemini import GeminiClient
     from langchain_core.messages import HumanMessage
 
-    llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
+    llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
     system_context = (
         "You are an expert career coach helping a job candidate prepare for their application. "

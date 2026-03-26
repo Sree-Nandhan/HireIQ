@@ -3,7 +3,7 @@ import traceback
 from typing import List
 
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agents.tools.gemini import GeminiClient
 
 from agents.config import settings
 from agents.state import AgentState
@@ -99,7 +99,7 @@ def gap_analyst_node(state: AgentState) -> AgentState:
         except Exception:
             pass
 
-        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
         summary_prompt = (
             f"The candidate matches {match_pct}% of the job requirements.\n"

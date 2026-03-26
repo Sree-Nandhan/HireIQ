@@ -1,7 +1,7 @@
 import traceback
 from typing import List
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agents.tools.gemini import GeminiClient
 from pydantic import BaseModel
 
 from agents.config import settings
@@ -29,7 +29,7 @@ def company_researcher_node(state: AgentState) -> AgentState:
         skills = jd_parsed.get("required_skills", [])[:10]
         resp = jd_parsed.get("responsibilities", [])[:5]
 
-        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
         prompt = (
             "Infer company insights from this parsed job info.\n\n"

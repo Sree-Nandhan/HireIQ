@@ -2,7 +2,7 @@ import json
 import traceback
 from typing import List
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agents.tools.gemini import GeminiClient
 from pydantic import BaseModel
 
 from agents.config import settings
@@ -50,7 +50,7 @@ def resume_tailor_node(state: AgentState) -> AgentState:
         else:
             n_bullets = min(len(all_bullets), 3)
 
-        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key)
 
         jd_slim = {"title": jd_parsed.get("job_title"), "required": jd_parsed.get("required_skills", [])[:12], "keywords": jd_parsed.get("keywords", [])[:10]}
         gap_slim = {"missing": gap_analysis.get("missing_skills", [])[:8], "matching": gap_analysis.get("matching_skills", [])[:8]}
