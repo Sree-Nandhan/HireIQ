@@ -2,7 +2,7 @@ import json
 import traceback
 from typing import List
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
 from agents.config import settings
@@ -29,7 +29,7 @@ def interview_coach_node(state: AgentState) -> AgentState:
         jd_parsed = state.get("jd_parsed") or {}
         gap_analysis = state.get("gap_analysis") or {}
 
-        llm = ChatGroq(model=settings.groq_model, temperature=0.5, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
         prompt = (
             "You are an expert interview coach. Generate exactly 4 likely interview "

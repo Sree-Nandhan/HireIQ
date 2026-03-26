@@ -137,10 +137,10 @@ async def coach(req: CoachRequest):
     resume and target job.
     """
     import json as _json
-    from langchain_groq import ChatGroq
+    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import HumanMessage
 
-    llm = ChatGroq(model=settings.groq_model, temperature=0.5, groq_api_key=settings.groq_api_key)
+    llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
     system_context = (
         "You are an expert career coach helping a job candidate prepare for their application. "

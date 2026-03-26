@@ -1,7 +1,7 @@
 import traceback
 from typing import List
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
 from agents.config import settings
@@ -29,7 +29,7 @@ def company_researcher_node(state: AgentState) -> AgentState:
         # Extract company name from jd_parsed if available
         company_name_hint = jd_parsed.get("company_name", "") or jd_parsed.get("company", "")
 
-        llm = ChatGroq(model=settings.groq_model, temperature=0.5, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
 
         prompt = (
             "You are a company research analyst. Based solely on the job description below, "

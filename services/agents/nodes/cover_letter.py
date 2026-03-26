@@ -1,7 +1,7 @@
 import json
 import traceback
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
 from agents.config import settings
@@ -20,7 +20,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
         company = jd_parsed.get("company") or "your company"
         matching_skills = gap_analysis.get("matching_skills", [])
 
-        llm = ChatGroq(model=settings.groq_model, temperature=0.7, groq_api_key=settings.groq_api_key)
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.7, google_api_key=settings.google_api_key)
 
         prompt = (
             f"You are a professional career coach. Write a compelling cover letter for "

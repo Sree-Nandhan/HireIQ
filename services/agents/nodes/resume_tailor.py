@@ -2,7 +2,7 @@ import json
 import traceback
 from typing import List
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
 from agents.config import settings
@@ -50,7 +50,7 @@ def resume_tailor_node(state: AgentState) -> AgentState:
         else:
             n_bullets = min(len(all_bullets), 3)
 
-        llm = ChatGroq(model=settings.groq_model, temperature=0.3, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key)
 
         prompt = (
             f"You are an expert resume writer. Select and rewrite the {n_bullets} most relevant "

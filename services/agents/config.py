@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    google_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
     agent_service_port: int = 8001
     environment: str = "development"
 

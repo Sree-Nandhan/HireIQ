@@ -2,7 +2,7 @@ import json
 import traceback
 from typing import List
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, field_validator
 
 from agents.config import settings
@@ -44,7 +44,7 @@ def ats_scorer_node(state: AgentState) -> AgentState:
         resume_parsed = state.get("resume_parsed") or {}
         tailored_bullets = state.get("tailored_bullets") or []
 
-        llm = ChatGroq(model=settings.groq_model, temperature=0, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
         candidate_skills = resume_parsed.get("skills", [])
         jd_keywords = jd_parsed.get("keywords", [])

@@ -1,7 +1,7 @@
 import traceback
 from typing import List, Optional
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, field_validator
 
 from agents.config import settings
@@ -41,7 +41,7 @@ class ParsedJD(BaseModel):
 def jd_analyst_node(state: AgentState) -> AgentState:
     """Parse the job description into structured data and index it in ChromaDB."""
     try:
-        llm = ChatGroq(model=settings.groq_model, temperature=0, groq_api_key=settings.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
+        llm = ChatGoogleGenerativeAI(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
 
         prompt = (
             "You are an expert job description analyst. Extract all structured "
