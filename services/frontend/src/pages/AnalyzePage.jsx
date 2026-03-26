@@ -14,6 +14,7 @@ export default function AnalyzePage() {
   const [applicationId, setApplicationId] = useState(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [error, setError] = useState("");
+  const [pdfFailed, setPdfFailed] = useState(false);
   const [companyData, setCompanyData] = useState(null);
   const [revealedText, setRevealedText] = useState("");
   const [revealedChips, setRevealedChips] = useState([]);
@@ -91,6 +92,9 @@ export default function AnalyzePage() {
     const file = e.target.files[0];
     if (!file) return;
     setResumeFile(file);
+    setPdfFailed(false);
+    setResumeText("");
+    setError("");
     const form = new FormData();
     form.append("file", file);
     try {
@@ -99,7 +103,7 @@ export default function AnalyzePage() {
       });
       setResumeText(res.data.text);
     } catch {
-      setError("Could not extract text from PDF. Please paste your resume manually.");
+      setPdfFailed(true);
     }
   };
 
@@ -273,7 +277,7 @@ export default function AnalyzePage() {
             <label>Resume <span className="req">*</span></label>
 
             {/* Upload zone */}
-            <label className={`upload-zone${resumeFile ? " upload-zone--done" : ""}`}>
+            <label className={`upload-zone${resumeFile && !pdfFailed ? " upload-zone--done" : resumeFile && pdfFailed ? " upload-zone--error" : ""}`}>
               <input
                 type="file"
                 accept="application/pdf"
@@ -282,9 +286,9 @@ export default function AnalyzePage() {
               />
               {resumeFile ? (
                 <>
-                  <span className="upload-icon">✓</span>
+                  <span className="upload-icon">{pdfFailed ? "⚠️" : "✓"}</span>
                   <span className="upload-filename">{resumeFile.name}</span>
-                  <span className="upload-hint">{resumeText.length} chars extracted</span>
+                  <span className="upload-hint">{pdfFailed ? "Extraction failed — paste below" : `${resumeText.length} chars extracted`}</span>
                 </>
               ) : (
                 <>
@@ -294,6 +298,16 @@ export default function AnalyzePage() {
                 </>
               )}
             </label>
+
+            {/* Manual paste fallback — shown when PDF extraction fails */}
+            {pdfFailed && (
+              <textarea
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+                placeholder="Paste your resume text here..."
+                style={{ marginTop: "0.75rem", flex: 1, minHeight: "200px", resize: "vertical" }}
+              />
+            )}
           </div>
         </div>
 

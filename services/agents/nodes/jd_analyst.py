@@ -41,7 +41,7 @@ class ParsedJD(BaseModel):
 def jd_analyst_node(state: AgentState) -> AgentState:
     """Parse the job description into structured data and index it in ChromaDB."""
     try:
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
 
         jd_text = state['job_description'][:3000]
         prompt = (

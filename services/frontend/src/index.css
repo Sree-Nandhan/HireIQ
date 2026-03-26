@@ -206,6 +206,8 @@ input[type="file"] { color: #94a3b8; font-size: 0.85rem; margin-top: 0.35rem; }
 }
 .upload-zone:hover { border-color: #38bdf8; background: rgba(56,189,248,0.04); }
 .upload-zone--done { border-style: solid; border-color: #10b981; background: rgba(16,185,129,0.05); }
+.upload-zone--error { border-style: solid; border-color: #f59e0b; background: rgba(245,158,11,0.05); }
+.upload-zone--error .upload-filename { color: #f59e0b; }
 .upload-icon { font-size: 1.6rem; }
 .upload-prompt { font-size: 0.9rem; font-weight: 600; color: #e2e8f0; }
 .upload-filename { font-size: 0.85rem; font-weight: 600; color: #10b981; }

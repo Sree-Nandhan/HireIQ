@@ -53,9 +53,22 @@ async def extract_resume_text(
 
         reader = PdfReader(io.BytesIO(raw))
         pages = len(reader.pages)
-        text = "\n\n".join(
-            page.extract_text() or "" for page in reader.pages
-        ).strip()
+
+        # Try layout-aware extraction first (preserves columns/spacing better),
+        # fall back to plain extraction per page if layout mode fails.
+        text_parts = []
+        for page in reader.pages:
+            extracted = ""
+            try:
+                extracted = page.extract_text(extraction_mode="layout") or ""
+            except Exception:
+                pass
+            if not extracted.strip():
+                extracted = page.extract_text() or ""
+            if extracted.strip():
+                text_parts.append(extracted)
+
+        text = "\n\n".join(text_parts).strip()
     except Exception as exc:
         logger.warning("PDF parse failed for user=%d: %s", current_user.id, exc)
         raise HTTPException(
@@ -66,7 +79,7 @@ async def extract_resume_text(
     if not text:
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No text could be extracted. The PDF may be image-only — try a text-based PDF.",
+            detail="No text could be extracted. The PDF may be image-only or use embedded fonts — please paste your resume text manually.",
         )
 
     logger.info(

@@ -50,7 +50,7 @@ class ParsedResume(BaseModel):
 def resume_parser_node(state: AgentState) -> AgentState:
     """Parse the raw resume text into structured data and index it in ChromaDB."""
     try:
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
 
         resume_text = state['resume_text'][:4000]
         prompt = (

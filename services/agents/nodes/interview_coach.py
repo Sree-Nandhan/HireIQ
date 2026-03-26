@@ -29,7 +29,7 @@ def interview_coach_node(state: AgentState) -> AgentState:
         jd_parsed = state.get("jd_parsed") or {}
         gap_analysis = state.get("gap_analysis") or {}
 
-        llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key, json_mode=True)
 
         candidate_slim = {
             "name": resume_parsed.get("name"),

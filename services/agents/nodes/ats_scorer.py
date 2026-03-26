@@ -44,7 +44,7 @@ def ats_scorer_node(state: AgentState) -> AgentState:
         resume_parsed = state.get("resume_parsed") or {}
         tailored_bullets = state.get("tailored_bullets") or []
 
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
 
         candidate_skills = resume_parsed.get("skills", [])
         jd_keywords = jd_parsed.get("keywords", [])

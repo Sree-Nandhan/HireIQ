@@ -165,7 +165,7 @@ async def trigger_analysis(
         analysis.id,
         session_id,
         analysis.ats_score,
-        (analysis.match_percentage or 0.0) * 100,
+        analysis.match_percentage or 0.0,
         analysis.input_tokens or 0,
         analysis.output_tokens or 0,
     )

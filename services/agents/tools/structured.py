@@ -1,8 +1,7 @@
-"""Structured JSON output helper for ChatOllama.
+"""Structured JSON output helper for GeminiClient.
 
-with_structured_output() uses Ollama's tool-calling feature, which can return
-JSON Schema descriptors instead of real values (e.g. {"type": "string"}).
-This module provides a reliable alternative: use format="json" and parse manually.
+Provides a reliable alternative to with_structured_output(): invoke the LLM
+(configured with json_mode=True for native JSON enforcement) and parse manually.
 """
 import json
 import re
@@ -23,10 +22,10 @@ def _strip_markdown(text: str) -> str:
 
 
 def invoke_structured(llm, prompt: str, model_class: Type[T]) -> T:
-    """Invoke an Ollama LLM (created with format='json') and validate into model_class.
+    """Invoke an LLM and validate its JSON response into model_class.
 
     Args:
-        llm: A ChatOllama instance created with format="json".
+        llm: A GeminiClient instance (ideally created with json_mode=True).
         prompt: The full prompt string (should describe the expected JSON keys).
         model_class: Pydantic model to validate the parsed JSON against.
 

@@ -50,7 +50,7 @@ def resume_tailor_node(state: AgentState) -> AgentState:
         else:
             n_bullets = min(len(all_bullets), 3)
 
-        llm = GeminiClient(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key)
+        llm = GeminiClient(model=settings.gemini_model, temperature=0.3, google_api_key=settings.google_api_key, json_mode=True)
 
         jd_slim = {"title": jd_parsed.get("job_title"), "required": jd_parsed.get("required_skills", [])[:12], "keywords": jd_parsed.get("keywords", [])[:10]}
         gap_slim = {"missing": gap_analysis.get("missing_skills", [])[:8], "matching": gap_analysis.get("matching_skills", [])[:8]}
