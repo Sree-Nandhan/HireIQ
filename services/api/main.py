@@ -24,12 +24,20 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="HireIQ API",
-    on_startup=[lambda: Base.metadata.create_all(bind=engine)],
     version=API_VERSION,
     description="Career intelligence API: manage job applications and trigger multi-agent analysis.",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+
+@app.on_event("startup")
+def create_tables():
+    try:
+        Base.metadata.create_all(bind=engine)
+        logging.getLogger(__name__).info("DB tables created/verified")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("DB create_all failed at startup: %s", exc)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
