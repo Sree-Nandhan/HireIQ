@@ -27,8 +27,6 @@ def _make_module(name: str) -> types.ModuleType:
 
 
 _STUB_MODULES = [
-    "langchain",
-    "langchain.schema",
     "langchain_google_genai",
     "langchain_core",
     "langchain_core.messages",
