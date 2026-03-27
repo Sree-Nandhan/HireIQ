@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
-import { useSimulatedProgress, AGENT_STEPS } from "../hooks/useSSE";
+import { AGENT_STEPS } from "../hooks/useSSE";
 
 const LOG = "[AnalyzePage]";
 const JD_MIN_CHARS = 80;
@@ -16,6 +16,7 @@ export default function AnalyzePage() {
   const [step, setStep]                   = useState("form"); // form | streaming
   const [applicationId, setApplicationId] = useState(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [currentStep, setCurrentStep]     = useState(0);
   const [error, setError]                 = useState("");
   const [pdfFailed, setPdfFailed]         = useState(false);
   const [pdfExtracting, setPdfExtracting] = useState(false);
@@ -29,10 +30,7 @@ export default function AnalyzePage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [touched, setTouched]         = useState({});
 
-  const { currentStep, progress } = useSimulatedProgress(
-    step === "streaming",
-    analysisComplete
-  );
+  const progress = analysisComplete ? 1 : currentStep / AGENT_STEPS.length;
 
   const revealRef = useRef({ timer: null });
 
@@ -179,9 +177,55 @@ export default function AnalyzePage() {
           console.warn(`${LOG} Company preview failed (non-critical):`, err.message);
         });
 
-      console.log(`${LOG} Starting full analysis pipeline for app id=${appId}`);
-      await api.post("/analyze", { application_id: appId });
+      console.log(`${LOG} Starting SSE analysis pipeline for app id=${appId}`);
+      try {
+        const token = localStorage.getItem("token");
+        const baseURL = import.meta.env.VITE_API_URL;
+        const response = await fetch(`${baseURL}/api/v1/analyze/stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ application_id: appId }),
+        });
+        if (!response.ok) throw new Error(`Stream HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() ?? "";
+          for (const block of blocks) {
+            for (const line of block.split("\n")) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const event = JSON.parse(line.slice(6));
+                if (event.status === "completed") {
+                  const idx = AGENT_STEPS.findIndex(s => s.key === event.agent);
+                  if (idx !== -1) setCurrentStep(idx + 1);
+                } else if (event.status === "saved") {
+                  setCurrentStep(AGENT_STEPS.length);
+                  setAnalysisComplete(true);
+                  return;
+                } else if (event.status === "error") {
+                  throw new Error(event.detail || "Pipeline error");
+                }
+              } catch (_) { /* ignore parse errors */ }
+            }
+          }
+        }
+      } catch (sseErr) {
+        // Fallback to blocking call if SSE fails
+        console.warn(`${LOG} SSE failed, falling back to blocking call:`, sseErr.message);
+        await api.post("/analyze", { application_id: appId });
+      }
       console.log(`${LOG} Analysis pipeline completed for app id=${appId}`);
+      setCurrentStep(AGENT_STEPS.length);
       setAnalysisComplete(true);
     } catch (err) {
       const msg = err.response?.data?.detail || "Analysis failed. Please try again.";

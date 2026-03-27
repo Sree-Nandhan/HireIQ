@@ -85,6 +85,8 @@ export default function ResultsPage() {
   const [reanalyzeModal, setReanalyzeModal] = useState(false);
   const [newResumeFile, setNewResumeFile]   = useState(null);
   const [newResumeText, setNewResumeText]   = useState("");
+  const [editedBullets, setEditedBullets] = useState({});
+  const [editingIdx, setEditingIdx]       = useState(null);
   const [chatOpen, setChatOpen]       = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [messages, setMessages]       = useState([]);
@@ -119,6 +121,16 @@ export default function ResultsPage() {
   if (loading) return <div className="center-msg">Loading results…</div>;
   if (error)   return <div className="center-msg error">{error}</div>;
   if (!analysis) return <div className="center-msg">No analysis found for this application.</div>;
+
+  const downloadText = (text, filename) => {
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getBulletText = (b, i) => editedBullets[i] ?? b.tailored;
 
   const gap      = analysis.gap_analysis    || {};
   const bullets  = (analysis.tailored_bullets || []).filter(b => b.tailored?.trim());
@@ -327,10 +339,18 @@ export default function ResultsPage() {
                 <div className="rp-section-title">Tailored Resume Bullets</div>
                 <div className="rp-section-sub">{bullets.length} bullet{bullets.length !== 1 ? "s" : ""} rewritten to match this role</div>
               </div>
-              <CopyButton
-                text={bullets.map(b => b.tailored).join("\n\n")}
-                label="Copy All"
-              />
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <CopyButton
+                  text={bullets.map((b, i) => getBulletText(b, i)).join("\n\n")}
+                  label="Copy All"
+                />
+                <button
+                  className="res-copy-btn"
+                  onClick={() => downloadText(bullets.map((b, i) => `• ${getBulletText(b, i)}`).join("\n\n"), "tailored-bullets.txt")}
+                >
+                  <span className="res-copy-icon">↓</span> Download
+                </button>
+              </div>
             </div>
 
             {bullets.length === 0 && (
@@ -351,8 +371,25 @@ export default function ResultsPage() {
                   <div className="rp-bullet-arrow">↓</div>
                   <div className="rp-bullet-row rp-bullet-row--after">
                     <span className="rp-bullet-badge rp-bullet-badge--after">After</span>
-                    <p className="rp-bullet-text rp-bullet-text--after">{renderBold(b.tailored)}</p>
-                    <CopyButton text={b.tailored} />
+                    {editingIdx === i ? (
+                      <textarea
+                        className="rp-bullet-edit-area"
+                        value={getBulletText(b, i)}
+                        onChange={(e) => setEditedBullets(prev => ({ ...prev, [i]: e.target.value }))}
+                        onBlur={() => setEditingIdx(null)}
+                        autoFocus
+                      />
+                    ) : (
+                      <p
+                        className="rp-bullet-text rp-bullet-text--after rp-bullet-editable"
+                        onClick={() => setEditingIdx(i)}
+                        title="Click to edit"
+                      >
+                        {renderBold(getBulletText(b, i))}
+                        <span className="rp-bullet-edit-hint">✎</span>
+                      </p>
+                    )}
+                    <CopyButton text={getBulletText(b, i)} />
                   </div>
                   {b.reasoning && (
                     <div className="rp-bullet-why">
@@ -373,7 +410,15 @@ export default function ResultsPage() {
                 <div className="rp-section-title">Cover Letter</div>
                 <div className="rp-section-sub">Personalized for {app.job_title} at {app.company}</div>
               </div>
-              <CopyButton text={analysis.cover_letter} label="Copy Letter" />
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <CopyButton text={analysis.cover_letter} label="Copy Letter" />
+                <button
+                  className="res-copy-btn"
+                  onClick={() => downloadText(analysis.cover_letter, `cover-letter-${app.company.replace(/\s+/g, "-")}.txt`)}
+                >
+                  <span className="res-copy-icon">↓</span> Download
+                </button>
+              </div>
             </div>
             <div className="rp-cover-doc">
               <pre className="rp-cover-text">{analysis.cover_letter}</pre>

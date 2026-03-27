@@ -5,6 +5,7 @@ from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
@@ -171,6 +172,111 @@ async def trigger_analysis(
     )
 
     return AnalysisResultResponse.model_validate(analysis)
+
+
+@router.post("/analyze/stream")
+async def trigger_analysis_stream(
+    payload: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Run the multi-agent pipeline and stream real-time agent-completion events via SSE.
+
+    Progress events: {"agent": "<name>", "status": "completed", "step": N, "total": 8}
+    Final event:     {"agent": "pipeline", "status": "saved", "application_id": N}
+    Error event:     {"agent": "pipeline", "status": "error", "detail": "..."}
+    """
+    application = (
+        db.query(JobApplication)
+        .filter(
+            JobApplication.id == payload.application_id,
+            JobApplication.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application with id={payload.application_id} not found.",
+        )
+
+    session_id = str(uuid.uuid4())
+    agent_payload = {
+        "resume_text": application.resume_text,
+        "job_description": application.job_description,
+        "user_id": current_user.id,
+    }
+
+    async def event_generator():
+        try:
+            async with httpx.AsyncClient(timeout=AGENT_TIMEOUT_SECONDS) as client:
+                async with client.stream(
+                    "POST",
+                    f"{settings.agent_service_url}/analyze/stream",
+                    json=agent_payload,
+                ) as resp:
+                    buffer = ""
+                    async for text_chunk in resp.aiter_text():
+                        buffer += text_chunk
+                        while "\n\n" in buffer:
+                            event_block, buffer = buffer.split("\n\n", 1)
+                            for line in event_block.split("\n"):
+                                if not line.startswith("data: "):
+                                    continue
+                                data_str = line[6:].strip()
+                                try:
+                                    event = json.loads(data_str)
+                                except Exception:
+                                    yield f"data: {data_str}\n\n"
+                                    continue
+
+                                if event.get("status") == "done":
+                                    result = event.get("result") or {}
+                                    ats_raw = result.get("ats_score")
+                                    ats_int = ats_raw.get("score") if isinstance(ats_raw, dict) else ats_raw
+
+                                    analysis = AnalysisResult(
+                                        application_id=application.id,
+                                        session_id=session_id,
+                                        ats_score=ats_int,
+                                        ats_details=_to_json_str(result.get("ats_score")),
+                                        match_percentage=event.get("match_percentage"),
+                                        gap_analysis=_to_json_str(result.get("gap_analysis")),
+                                        tailored_bullets=_to_json_str(result.get("tailored_bullets")),
+                                        cover_letter=result.get("cover_letter"),
+                                        input_tokens=result.get("input_tokens", 0),
+                                        output_tokens=result.get("output_tokens", 0),
+                                        interview_qa=_to_json_str(result.get("interview_qa")),
+                                        company_research=_to_json_str(result.get("company_research")),
+                                        created_at=datetime.utcnow(),
+                                    )
+                                    db.add(analysis)
+                                    application.status = "analyzed"
+                                    try:
+                                        db.commit()
+                                        db.refresh(analysis)
+                                        logger.info(
+                                            "Stream analysis saved: id=%d session=%s match=%.1f%%",
+                                            analysis.id, session_id, analysis.match_percentage or 0.0,
+                                        )
+                                    except Exception as db_exc:
+                                        db.rollback()
+                                        logger.error("Failed to save stream analysis: %s", db_exc)
+
+                                    yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'saved', 'application_id': application.id})}\n\n"
+                                else:
+                                    yield f"data: {data_str}\n\n"
+
+        except Exception as exc:
+            logger.error("Stream proxy error session=%s: %s", session_id, exc)
+            yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'error', 'detail': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/applications/{application_id}/analyses", response_model=list[AnalysisResultResponse])

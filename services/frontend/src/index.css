@@ -1218,3 +1218,26 @@ input.icon-input[type="text"]:focus {
   border-radius: 6px; transition: color 0.15s, background 0.15s;
 }
 .btn-delete:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
+/* ── Editable bullet styles ── */
+.rp-bullet-editable {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.rp-bullet-editable:hover { background: rgba(56,189,248,0.06); }
+.rp-bullet-edit-hint {
+  font-size: 0.7rem; color: #475569; margin-left: 0.4rem;
+  opacity: 0; transition: opacity 0.15s;
+}
+.rp-bullet-editable:hover .rp-bullet-edit-hint { opacity: 1; }
+.rp-bullet-edit-area {
+  width: 100%; min-height: 80px; background: #0f172a;
+  border: 1px solid #38bdf8; border-radius: 6px;
+  color: #e2e8f0; font-size: 0.88rem; line-height: 1.6;
+  padding: 0.5rem 0.75rem; resize: vertical; font-family: inherit;
+}
+.rp-bullet-edit-area:focus { outline: none; box-shadow: 0 0 0 2px rgba(56,189,248,0.2); }

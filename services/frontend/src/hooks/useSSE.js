@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
 export const AGENT_STEPS = [
-  { key: "resume_parser",   label: "Parsing resume",             icon: "📄" },
-  { key: "jd_analyst",      label: "Analyzing job description",  icon: "🔍" },
-  { key: "gap_analyst",     label: "Running gap analysis",       icon: "📊" },
-  { key: "resume_tailor",   label: "Tailoring resume bullets",   icon: "✏️"  },
-  { key: "cover_letter",    label: "Writing cover letter",       icon: "✉️"  },
-  { key: "interview_coach", label: "Preparing interview Q&A",    icon: "🎯" },
-  { key: "ats_scorer",      label: "Scoring ATS compatibility",  icon: "⚡" },
+  { key: "resume_parser",      label: "Parsing resume",             icon: "📄" },
+  { key: "jd_analyst",         label: "Analyzing job description",  icon: "🔍" },
+  { key: "company_researcher", label: "Researching company",        icon: "🏢" },
+  { key: "gap_analyst",        label: "Running gap analysis",       icon: "📊" },
+  { key: "resume_tailor",      label: "Tailoring resume bullets",   icon: "✏️"  },
+  { key: "cover_letter",       label: "Writing cover letter",       icon: "✉️"  },
+  { key: "interview_coach",    label: "Preparing interview Q&A",    icon: "🎯" },
+  { key: "ats_scorer",         label: "Scoring ATS compatibility",  icon: "⚡" },
 ];
 
 // How long to simulate each step before the real response arrives.

@@ -337,32 +337,47 @@ async def analyze_stream(req: AnalyzeRequest):
 
     async def _event_generator():
         try:
-            # Run the pipeline once and store the final state.
-            tracker = TokenTracker()
-            final_state = await graph.ainvoke(
-                initial_state, config={"callbacks": [tracker]}
-            )
+            final_state: dict = {}
+            prev_completed: set = set()
 
-            # Emit one progress event per completed agent in pipeline order.
-            completed = final_state.get("completed_agents", [])
-            for name in _PIPELINE_AGENTS:
-                if name in completed:
-                    step = _PIPELINE_AGENTS.index(name) + 1
-                    payload = json.dumps({
-                        "agent": name,
-                        "status": "completed",
-                        "step": step,
-                        "total": len(_PIPELINE_AGENTS),
-                    })
-                    yield f"data: {payload}\n\n"
+            # stream_mode="values" yields the full state after each node completes,
+            # giving real-time progress as each agent finishes its LLM call.
+            async for state_snapshot in graph.astream(initial_state, stream_mode="values"):
+                if not isinstance(state_snapshot, dict):
+                    continue
+                final_state = state_snapshot
 
-            # Emit the final done event.
+                current_completed = set(state_snapshot.get("completed_agents") or [])
+                for agent_name in (current_completed - prev_completed):
+                    if agent_name in _PIPELINE_AGENTS:
+                        step = _PIPELINE_AGENTS.index(agent_name) + 1
+                        payload = json.dumps({
+                            "agent": agent_name,
+                            "status": "completed",
+                            "step": step,
+                            "total": len(_PIPELINE_AGENTS),
+                        })
+                        yield f"data: {payload}\n\n"
+                prev_completed = current_completed
+
+            # Emit the final done event with full results so the API service
+            # can persist them without a second pipeline call.
             gap_analysis = final_state.get("gap_analysis") or {}
             result_payload = json.dumps({
                 "agent": "pipeline",
                 "status": "done",
                 "session_id": session_id,
                 "match_percentage": float(gap_analysis.get("match_percentage", 0.0)),
+                "result": {
+                    "gap_analysis": final_state.get("gap_analysis"),
+                    "tailored_bullets": final_state.get("tailored_bullets"),
+                    "cover_letter": final_state.get("cover_letter"),
+                    "interview_qa": final_state.get("interview_qa"),
+                    "ats_score": final_state.get("ats_score"),
+                    "company_research": final_state.get("company_research"),
+                    "input_tokens": final_state.get("input_tokens", 0),
+                    "output_tokens": final_state.get("output_tokens", 0),
+                },
                 "error": final_state.get("error"),
             })
             yield f"data: {result_payload}\n\n"
