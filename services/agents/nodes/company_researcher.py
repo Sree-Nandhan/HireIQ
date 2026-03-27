@@ -64,6 +64,8 @@ def company_researcher_node(state: AgentState) -> AgentState:
             **state,
             "company_research": research_dict,
             "completed_agents": state.get("completed_agents", []) + ["company_researcher"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:

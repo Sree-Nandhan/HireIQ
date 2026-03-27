@@ -88,6 +88,8 @@ def resume_tailor_node(state: AgentState) -> AgentState:
             **state,
             "tailored_bullets": tailored_list,
             "completed_agents": state.get("completed_agents", []) + ["resume_tailor"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:

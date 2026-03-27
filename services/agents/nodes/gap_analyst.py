@@ -15,6 +15,37 @@ logger = logging.getLogger(__name__)
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
 
+# Maps JD skill buzzwords → synonyms/equivalents that appear on real resumes.
+_SKILL_ALIASES: dict[str, List[str]] = {
+    "backend development":   ["software engineering", "server side", "backend", "api development", "web development"],
+    "backend engineer":      ["software engineer", "backend", "server side"],
+    "rest apis":             ["restful", "rest api", "http api", "web api", "api integration", "api"],
+    "rest api":              ["restful", "http api", "web api", "api"],
+    "webhooks":              ["webhook", "event driven", "callback", "event-driven"],
+    "oauth":                 ["oauth2", "authentication", "auth", "authorization"],
+    "typescript":            ["ts", "javascript", "js"],
+    "openai api":            ["openai", "gpt", "chatgpt", "llm api", "language model api"],
+    "anthropic api":         ["anthropic", "claude"],
+    "stt":                   ["speech to text", "speech recognition", "asr", "whisper"],
+    "tts":                   ["text to speech", "speech synthesis", "elevenlabs"],
+    "voice ai":              ["conversational ai", "voice assistant", "speech", "vapi", "retell"],
+    "telephony":             ["twilio", "phone", "call", "voice"],
+    "function calling":      ["function calling", "tool calling", "tool use", "tools"],
+    "conversation state":    ["conversation history", "context management", "dialogue", "chat history"],
+    "real time audio":       ["audio processing", "real time", "streaming", "latency"],
+    "latency management":    ["real time", "low latency", "performance", "optimization"],
+    "barge in handling":     ["interruption", "real time", "audio pipeline"],
+    "prompt engineering":    ["prompt", "llm", "system prompt", "few shot", "chain of thought"],
+    "rag":                   ["retrieval augmented", "langchain", "vector", "embeddings", "chromadb"],
+    "llms":                  ["large language model", "llm", "gpt", "claude", "gemini", "hugging face"],
+    "llm orchestration":     ["langchain", "langgraph", "llm", "agent", "chain"],
+    "api documentation":     ["api", "rest", "documentation", "swagger", "openapi"],
+    "cloud infrastructure":  ["aws", "gcp", "azure", "cloud", "docker", "kubernetes"],
+    "service deployment":    ["deployment", "deploy", "docker", "kubernetes", "ci cd", "production"],
+    "full stack":            ["frontend", "backend", "software engineer", "full-stack"],
+    "crm integration":       ["crm", "api integration", "salesforce", "hubspot", "integration"],
+}
+
 
 def _normalize(text: str) -> str:
     """Lowercase + strip punctuation for comparison."""
@@ -23,8 +54,9 @@ def _normalize(text: str) -> str:
 
 def _skill_match(skill: str, resume_text: str, resume_skills: List[str]) -> str:
     """
-    Deterministically classify a JD skill against the resume.
+    Classify a JD skill against the resume.
     Returns 'match', 'partial', or 'miss'.
+    Checks direct text/skill-list matches first, then synonym aliases.
     """
     norm_skill = _normalize(skill)
     norm_resume = _normalize(resume_text)
@@ -39,10 +71,26 @@ def _skill_match(skill: str, resume_text: str, resume_skills: List[str]) -> str:
         if norm_skill == s or norm_skill in s or s in norm_skill:
             return "match"
 
+    # --- Alias match: check known synonyms against resume text and skills list ---
+    aliases = _SKILL_ALIASES.get(norm_skill, [])
+    for alias in aliases:
+        norm_alias = _normalize(alias)
+        if norm_alias in norm_resume:
+            return "match"
+        for s in norm_skills_list:
+            if norm_alias in s or s in norm_alias:
+                return "match"
+
     # --- Partial: a meaningful word (4+ chars) from the skill appears in resume text ---
     words = [w for w in norm_skill.split() if len(w) >= 4]
     if words and any(w in norm_resume for w in words):
         return "partial"
+
+    # --- Partial: any alias word appears in resume text ---
+    for alias in aliases:
+        alias_words = [w for w in _normalize(alias).split() if len(w) >= 4]
+        if alias_words and any(w in norm_resume for w in alias_words):
+            return "partial"
 
     return "miss"
 
@@ -139,6 +187,8 @@ def gap_analyst_node(state: AgentState) -> AgentState:
                 "summary": summary,
             },
             "completed_agents": state.get("completed_agents", []) + ["gap_analyst"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:

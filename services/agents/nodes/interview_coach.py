@@ -36,18 +36,30 @@ def interview_coach_node(state: AgentState) -> AgentState:
 
         llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key, json_mode=True)
 
+        # Include bullet points so model_answer can reference real project work
+        experience_full = [
+            {
+                "title": e.get("title"),
+                "company": e.get("company"),
+                "bullets": e.get("bullets", [])[:3],
+            }
+            for e in resume_parsed.get("experience", [])[:3]
+        ]
         candidate_slim = {
             "name": resume_parsed.get("name"),
             "skills": resume_parsed.get("skills", [])[:10],
-            "experience": [{"title": e.get("title"), "company": e.get("company")} for e in resume_parsed.get("experience", [])[:3]],
+            "experience": experience_full,
         }
         jd_slim = {"title": jd_parsed.get("job_title"), "required": jd_parsed.get("required_skills", [])[:10]}
         gap_slim = {"missing": gap_analysis.get("missing_skills", [])[:6], "matching": gap_analysis.get("matching_skills", [])[:6]}
 
         prompt = (
-            "Generate 4 interview questions (2 behavioral, 2 technical) for this candidate.\n\n"
+            "Generate 4 interview questions (2 behavioral, 2 technical) for this specific candidate.\n\n"
             f"CANDIDATE: {json.dumps(candidate_slim)}\nJD: {json.dumps(jd_slim)}\nGAPS: {json.dumps(gap_slim)}\n\n"
-            "For each: question, type (behavioral/technical), model_answer (1-2 sentences).\n\n"
+            "Rules:\n"
+            "- model_answer must reference the candidate's ACTUAL projects, companies, or technologies from their experience above.\n"
+            "- Never give generic answers like 'I worked on a project' — name the real company/tool.\n"
+            "- model_answer should be 2-3 sentences, specific and concrete.\n\n"
             'Respond with ONLY: {"qa_pairs": [{"question": "string", "type": "behavioral", "model_answer": "string"}]}'
         )
 
@@ -63,6 +75,8 @@ def interview_coach_node(state: AgentState) -> AgentState:
             **state,
             "interview_qa": qa_list,
             "completed_agents": state.get("completed_agents", []) + ["interview_coach"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:

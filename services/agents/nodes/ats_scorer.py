@@ -71,11 +71,6 @@ def ats_scorer_node(state: AgentState) -> AgentState:
         result: ATSScore = invoke_structured(llm, prompt, ATSScore)
         score_dict = result.model_dump()
 
-        # Pin the ATS score to the gap analysis match_percentage so both
-        # numbers stay consistent — one score, one story.
-        gap_pct = float((state.get("gap_analysis") or {}).get("match_percentage", 0))
-        score_dict["score"] = max(0, min(100, round(gap_pct)))
-
         logger.info(
             "ats_scorer_node: done [session=%s] score=%d keyword_matches=%d keyword_misses=%d",
             session_id,
@@ -87,6 +82,8 @@ def ats_scorer_node(state: AgentState) -> AgentState:
             **state,
             "ats_score": score_dict,
             "completed_agents": state.get("completed_agents", []) + ["ats_scorer"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:

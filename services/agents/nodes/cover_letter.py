@@ -35,10 +35,15 @@ def cover_letter_node(state: AgentState) -> AgentState:
         jd_slim = {"title": job_title, "company": company, "required": jd_parsed.get("required_skills", [])[:8]}
 
         prompt = (
-            f"Write a 3-paragraph cover letter for {candidate_name} applying to '{job_title}' at {company}.\n\n"
+            f"Write a professional 3-paragraph cover letter for {candidate_name} applying to '{job_title}' at {company}.\n\n"
             f"CANDIDATE: {json.dumps(candidate_slim)}\nJD: {json.dumps(jd_slim)}\nMATCHES: {matching_skills[:8]}\n\n"
-            "Para 1: enthusiasm. Para 2: 2-3 matching skills with examples. Para 3: closing.\n"
-            "Return ONLY the cover letter text."
+            "Rules:\n"
+            "- Start Para 1 with 'I am excited to apply...' or similar — NEVER start with 'My name is'.\n"
+            "- Para 1: express specific enthusiasm for the role and company.\n"
+            "- Para 2: highlight 2-3 concrete matching skills/experiences tied to the JD requirements.\n"
+            "- Para 3: confident closing with a call to action.\n"
+            "- Do NOT include a salutation line (Dear Hiring Manager) or signature block — body text only.\n"
+            "Return ONLY the 3 paragraphs of cover letter body text."
         )
 
         message = HumanMessage(content=prompt)
@@ -54,6 +59,8 @@ def cover_letter_node(state: AgentState) -> AgentState:
             **state,
             "cover_letter": cover_letter_text,
             "completed_agents": state.get("completed_agents", []) + ["cover_letter"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:
