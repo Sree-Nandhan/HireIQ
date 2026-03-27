@@ -125,6 +125,8 @@ async def company_preview(req: CompanyPreviewRequest):
         "user_id": 0, "session_id": "preview",
     }
     result = company_researcher_node(state)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
     return result.get("company_research") or {}
 
 
