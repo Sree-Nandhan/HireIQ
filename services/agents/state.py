@@ -24,3 +24,7 @@ class AgentState(TypedDict):
     completed_agents: List[str]         # track which agents ran
     messages: List[BaseMessage]         # LLM message history
     error: Optional[str]                # error message if any
+
+    # Token usage — accumulated across all nodes
+    input_tokens: int
+    output_tokens: int

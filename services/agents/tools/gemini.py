@@ -31,6 +31,10 @@ class GeminiClient:
             config_kwargs["response_mime_type"] = "application/json"
         self._config = types.GenerateContentConfig(**config_kwargs)
 
+        # Accumulated token counts across all invoke() calls on this instance.
+        self.input_tokens: int = 0
+        self.output_tokens: int = 0
+
     def invoke(self, messages) -> _Response:
         prompt = messages[0].content if hasattr(messages[0], "content") else str(messages[0])
         resp = self._client.models.generate_content(
@@ -38,4 +42,9 @@ class GeminiClient:
             contents=prompt,
             config=self._config,
         )
+        # Extract real token usage from the Gemini response.
+        usage = getattr(resp, "usage_metadata", None)
+        if usage:
+            self.input_tokens += getattr(usage, "prompt_token_count", 0) or 0
+            self.output_tokens += getattr(usage, "candidates_token_count", 0) or 0
         return _Response(resp.text)
