@@ -4,8 +4,16 @@ import api from "../api/client";
 import { useSimulatedProgress, AGENT_STEPS } from "../hooks/useSSE";
 
 const LOG = "[ResultsPage]";
-const TABS = ["Gap Analysis", "Tailored Bullets", "Cover Letter", "Interview Q&A", "ATS Score"];
 
+const TABS = [
+  { label: "Gap Analysis",     icon: "📊" },
+  { label: "Tailored Bullets", icon: "✏️"  },
+  { label: "Cover Letter",     icon: "✉️"  },
+  { label: "Interview Q&A",   icon: "🎤" },
+  { label: "ATS Score",        icon: "⚡" },
+];
+
+/* ── Tiny reusable copy button ─────────────────────────────── */
 function CopyButton({ text, label = "Copy" }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -16,12 +24,54 @@ function CopyButton({ text, label = "Copy" }) {
     });
   };
   return (
-    <button className={`btn-copy${copied ? " btn-copy--done" : ""}`} onClick={copy}>
-      {copied ? "✓ Copied" : label}
+    <button className={`res-copy-btn${copied ? " res-copy-btn--done" : ""}`} onClick={copy}>
+      {copied ? (
+        <><span className="res-copy-icon">✓</span> Copied</>
+      ) : (
+        <><span className="res-copy-icon">⎘</span> {label}</>
+      )}
     </button>
   );
 }
 
+/* ── SVG match ring ────────────────────────────────────────── */
+function MatchRing({ pct, size = 96, stroke = 7 }) {
+  const r    = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const fill = ((pct || 0) / 100) * circ;
+  const color = pct >= 65 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#f87171";
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e2e45" strokeWidth={stroke} />
+      <circle
+        cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={color} strokeWidth={stroke}
+        strokeDasharray={`${fill} ${circ}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{ transition: "stroke-dasharray 0.8s ease" }}
+      />
+      <text x={size/2} y={size/2 + 5} textAnchor="middle" fontSize={size * 0.2} fontWeight="700" fill={color}>
+        {Math.round(pct || 0)}%
+      </text>
+    </svg>
+  );
+}
+
+/* ── Skill chip ────────────────────────────────────────────── */
+function Chip({ label, variant }) {
+  return <span className={`skill-chip skill-chip--${variant}`}>{label}</span>;
+}
+
+/* ── Render **bold** markdown as <strong> ───────────────────── */
+function renderBold(text) {
+  if (!text || !text.includes("**")) return text;
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
 export default function ResultsPage() {
   const { id } = useParams();
   const [app, setApp]           = useState(null);
@@ -29,7 +79,7 @@ export default function ResultsPage() {
   const [tab, setTab]           = useState(0);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
-  const [reanalyzing, setReanalyzing]   = useState(false);
+  const [reanalyzing, setReanalyzing]     = useState(false);
   const [reanalyzeDone, setReanalyzeDone] = useState(false);
   const { currentStep, progress } = useSimulatedProgress(reanalyzing, reanalyzeDone);
   const [reanalyzeModal, setReanalyzeModal] = useState(false);
@@ -66,16 +116,18 @@ export default function ResultsPage() {
     load();
   }, [id]);
 
-  if (loading) return <div className="center-msg">Loading results...</div>;
+  if (loading) return <div className="center-msg">Loading results…</div>;
   if (error)   return <div className="center-msg error">{error}</div>;
   if (!analysis) return <div className="center-msg">No analysis found for this application.</div>;
 
-  const gap     = analysis.gap_analysis || {};
-  const bullets = analysis.tailored_bullets || [];
-  const qa      = analysis.interview_qa || [];
-  const ats     = analysis.ats_details || {};
+  const gap      = analysis.gap_analysis    || {};
+  const bullets  = (analysis.tailored_bullets || []).filter(b => b.tailored?.trim());
+  const qa       = analysis.interview_qa    || [];
+  const ats      = analysis.ats_details     || {};
   const atsScore = analysis.ats_score ?? ats.score ?? null;
+  const matchPct = gap.match_percentage ?? null;
 
+  /* handlers ── unchanged logic, same as before */
   const handleNewResumePDF = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -95,12 +147,11 @@ export default function ResultsPage() {
 
   const reanalyze = async () => {
     if (reanalyzing) return;
-    console.log(`${LOG} Starting re-analysis for app id=${id}${newResumeText ? " with updated resume" : ""}`);
+    console.log(`${LOG} Starting re-analysis for app id=${id}`);
     setReanalyzing(true);
     setReanalyzeModal(false);
     try {
       if (newResumeText.trim()) {
-        console.log(`${LOG} Updating resume text for app id=${id}`);
         await api.patch(`/applications/${id}/resume`, { resume_text: newResumeText });
       }
       await api.post("/analyze", { application_id: Number(id) });
@@ -112,11 +163,10 @@ export default function ResultsPage() {
       if (res.data.analyses?.length > 0) {
         const latest = res.data.analyses[res.data.analyses.length - 1];
         setAnalysis(latest);
-        console.log(`${LOG} Re-analysis saved: ats_score=${latest.ats_score}, match=${latest.match_percentage}%`);
+        console.log(`${LOG} Re-analysis saved: ats_score=${latest.ats_score}`);
       }
     } catch (err) {
-      const msg = err.response?.data?.detail || "Re-analysis failed.";
-      console.error(`${LOG} Re-analysis failed for app id=${id}:`, msg, err);
+      console.error(`${LOG} Re-analysis failed:`, err.response?.data?.detail || err.message, err);
     } finally {
       setReanalyzing(false);
       setReanalyzeDone(false);
@@ -129,17 +179,16 @@ export default function ResultsPage() {
     e.preventDefault();
     if (!question.trim() || coachLoading) return;
     const q = question.trim();
-    console.log(`${LOG} Sending coach question for app id=${id}:`, q);
+    console.log(`${LOG} Coach question for app id=${id}:`, q);
     setMessages((prev) => [...prev, { role: "user", text: q }]);
     setQuestion("");
     setCoachLoading(true);
     try {
       const res = await api.post("/coach", { application_id: Number(id), question: q });
-      console.log(`${LOG} Coach answer received (${res.data.answer?.length ?? 0} chars)`);
+      console.log(`${LOG} Coach answer received`);
       setMessages((prev) => [...prev, { role: "coach", text: res.data.answer }]);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message;
-      console.error(`${LOG} Coach request failed:`, msg, err);
+      console.error(`${LOG} Coach failed:`, err.response?.data?.detail || err.message, err);
       setMessages((prev) => [...prev, { role: "coach", text: "Sorry, I couldn't answer that right now. Try again." }]);
     } finally {
       setCoachLoading(false);
@@ -147,177 +196,328 @@ export default function ResultsPage() {
     }
   };
 
+  /* ── render ─────────────────────────────────────────────── */
   return (
-    <div className="results-page">
-      <div className="results-header">
-        <div>
-          <h2>{app.job_title}</h2>
-          <p className="subtitle">{app.company}</p>
+    <div className="rp-page">
+
+      {/* ══ HEADER ══════════════════════════════════════════ */}
+      <div className="rp-header">
+        <div className="rp-header-left">
+          <div className="rp-breadcrumb">
+            <Link to="/tracker" className="rp-back-link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              All Applications
+            </Link>
+          </div>
+          <h1 className="rp-title">{app.job_title}</h1>
+          <div className="rp-meta">
+            <span className="rp-company">{app.company}</span>
+            <span className="rp-status-pill">Analyzed</span>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button className="btn-secondary" onClick={() => setReanalyzeModal(true)} disabled={reanalyzing}>
-            {reanalyzing ? "Re-analyzing..." : "↺ Re-analyze"}
-          </button>
-          <Link to="/tracker" className="btn-secondary">Back to Tracker</Link>
+
+        <div className="rp-header-right">
+          {matchPct !== null && <MatchRing pct={matchPct} size={88} stroke={6} />}
+          <div className="rp-header-actions">
+            <button
+              className="rp-btn-reanalyze"
+              onClick={() => setReanalyzeModal(true)}
+              disabled={reanalyzing}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              {reanalyzing ? "Re-analyzing…" : "Re-analyze"}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="tab-row">
+      {/* ══ TABS ════════════════════════════════════════════ */}
+      <div className="rp-tabs">
         {TABS.map((t, i) => (
           <button
-            key={t}
-            className={tab === i ? "tab active" : "tab"}
-            onClick={() => {
-              console.log(`${LOG} Switching to tab: ${t}`);
-              setTab(i);
-            }}
+            key={t.label}
+            className={`rp-tab${tab === i ? " rp-tab--active" : ""}`}
+            onClick={() => { console.log(`${LOG} Tab: ${t.label}`); setTab(i); }}
           >
-            {t}
+            <span className="rp-tab-icon">{t.icon}</span>
+            <span className="rp-tab-label">{t.label}</span>
           </button>
         ))}
       </div>
 
-      <div className="tab-content">
+      {/* ══ CONTENT ═════════════════════════════════════════ */}
+      <div className="rp-content">
+
+        {/* ── GAP ANALYSIS ── */}
         {tab === 0 && (
-          <div className="gap-panel">
-            <div className="score-badge">
-              {gap.match_percentage ?? "--"}% Match
+          <div className="rp-gap">
+            {/* Top: ring + summary */}
+            <div className="rp-gap-top">
+              <div className="rp-gap-ring-wrap">
+                <MatchRing pct={matchPct ?? 0} size={120} stroke={8} />
+                <div className="rp-gap-ring-label">Overall Match</div>
+              </div>
+              {gap.summary && (
+                <div className="rp-gap-summary-box">
+                  <div className="rp-gap-summary-eyebrow">AI Summary</div>
+                  <p className="rp-gap-summary-text">{gap.summary}</p>
+                </div>
+              )}
             </div>
-            {gap.summary && <p className="gap-summary">{gap.summary}</p>}
-            <div className="row-2">
-              <div>
-                <h4>Matching Skills</h4>
-                <ul>
-                  {(gap.matching_skills || []).map((s) => (
-                    <li key={s} className="skill-match">{s}</li>
-                  ))}
-                </ul>
+
+            {/* Skills grid */}
+            <div className="rp-skills-grid">
+              <div className="rp-skills-col">
+                <div className="rp-skills-col-header rp-skills-col-header--match">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Matching Skills
+                  <span className="rp-skills-count">{(gap.matching_skills||[]).length}</span>
+                </div>
+                <div className="rp-chips-wrap">
+                  {(gap.matching_skills || []).length === 0
+                    ? <span className="rp-empty-note">None detected</span>
+                    : (gap.matching_skills || []).map(s => <Chip key={s} label={s} variant="match" />)}
+                </div>
               </div>
-              <div>
-                <h4>Missing Skills</h4>
-                <ul>
-                  {(gap.missing_skills || []).map((s) => (
-                    <li key={s} className="skill-miss">{s}</li>
-                  ))}
-                </ul>
-                {(gap.partial_matches || []).length > 0 && (
-                  <>
-                    <h4 style={{ marginTop: "1rem" }}>Partial Matches</h4>
-                    <ul>
-                      {gap.partial_matches.map((s) => (
-                        <li key={s} className="skill-partial">{s}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+
+              <div className="rp-skills-col">
+                <div className="rp-skills-col-header rp-skills-col-header--miss">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                  Missing Skills
+                  <span className="rp-skills-count">{(gap.missing_skills||[]).length}</span>
+                </div>
+                <div className="rp-chips-wrap">
+                  {(gap.missing_skills || []).length === 0
+                    ? <span className="rp-empty-note">None — great fit!</span>
+                    : (gap.missing_skills || []).map(s => <Chip key={s} label={s} variant="miss" />)}
+                </div>
               </div>
+
+              {(gap.partial_matches || []).length > 0 && (
+                <div className="rp-skills-col rp-skills-col--full">
+                  <div className="rp-skills-col-header rp-skills-col-header--partial">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Partial Matches
+                    <span className="rp-skills-count">{gap.partial_matches.length}</span>
+                  </div>
+                  <div className="rp-chips-wrap">
+                    {gap.partial_matches.map(s => <Chip key={s} label={s} variant="partial" />)}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
+        {/* ── TAILORED BULLETS ── */}
         {tab === 1 && (
-          <div className="bullets-list">
-            <div className="tab-toolbar">
+          <div className="rp-bullets">
+            <div className="rp-section-toolbar">
+              <div>
+                <div className="rp-section-title">Tailored Resume Bullets</div>
+                <div className="rp-section-sub">{bullets.length} bullet{bullets.length !== 1 ? "s" : ""} rewritten to match this role</div>
+              </div>
               <CopyButton
-                text={bullets.filter(b => b.tailored?.trim()).map(b => b.tailored).join("\n\n")}
-                label="Copy All Bullets"
+                text={bullets.map(b => b.tailored).join("\n\n")}
+                label="Copy All"
               />
             </div>
-            {bullets.filter(b => b.tailored?.trim()).length === 0 && (
-              <p className="muted">No tailored bullets — the resume may not have enough experience bullets to rewrite.</p>
+
+            {bullets.length === 0 && (
+              <div className="rp-empty-state">
+                <div className="rp-empty-icon">✏️</div>
+                <p>No tailored bullets — the resume may not have enough experience bullet points to rewrite.</p>
+              </div>
             )}
-            {bullets.filter(b => b.tailored?.trim()).map((b, i) => (
-              <div key={i} className="bullet-card">
-                <p className="bullet-original"><span className="label">Original</span>{b.original}</p>
-                <div className="bullet-tailored-row">
-                  <p className="bullet-tailored"><span className="label">Tailored</span>{b.tailored}</p>
-                  <CopyButton text={b.tailored} />
+
+            {bullets.map((b, i) => (
+              <div key={i} className="rp-bullet-card">
+                <div className="rp-bullet-num">#{i + 1}</div>
+                <div className="rp-bullet-body">
+                  <div className="rp-bullet-row rp-bullet-row--before">
+                    <span className="rp-bullet-badge rp-bullet-badge--before">Before</span>
+                    <p className="rp-bullet-text rp-bullet-text--before">{renderBold(b.original)}</p>
+                  </div>
+                  <div className="rp-bullet-arrow">↓</div>
+                  <div className="rp-bullet-row rp-bullet-row--after">
+                    <span className="rp-bullet-badge rp-bullet-badge--after">After</span>
+                    <p className="rp-bullet-text rp-bullet-text--after">{renderBold(b.tailored)}</p>
+                    <CopyButton text={b.tailored} />
+                  </div>
+                  {b.reasoning && (
+                    <div className="rp-bullet-why">
+                      <span className="rp-bullet-why-label">Why:</span> {renderBold(b.reasoning)}
+                    </div>
+                  )}
                 </div>
-                <p className="bullet-reasoning"><span className="label">Why</span>{b.reasoning}</p>
               </div>
             ))}
           </div>
         )}
 
+        {/* ── COVER LETTER ── */}
         {tab === 2 && (
-          <div className="cover-letter-wrap">
-            <div className="tab-toolbar">
-              <CopyButton text={analysis.cover_letter} label="Copy Cover Letter" />
+          <div className="rp-cover">
+            <div className="rp-section-toolbar">
+              <div>
+                <div className="rp-section-title">Cover Letter</div>
+                <div className="rp-section-sub">Personalized for {app.job_title} at {app.company}</div>
+              </div>
+              <CopyButton text={analysis.cover_letter} label="Copy Letter" />
             </div>
-            <pre className="cover-letter">{analysis.cover_letter}</pre>
+            <div className="rp-cover-doc">
+              <pre className="rp-cover-text">{analysis.cover_letter}</pre>
+            </div>
           </div>
         )}
 
+        {/* ── INTERVIEW Q&A ── */}
         {tab === 3 && (
-          <div className="qa-list">
-            <div className="tab-toolbar">
+          <div className="rp-qa">
+            <div className="rp-section-toolbar">
+              <div>
+                <div className="rp-section-title">Interview Preparation</div>
+                <div className="rp-section-sub">{qa.length} likely question{qa.length !== 1 ? "s" : ""} with model answers</div>
+              </div>
               <CopyButton
-                text={qa.map((item, i) => `Q${i+1}: ${item.question}\nA: ${item.model_answer}`).join("\n\n")}
+                text={qa.map((item, i) => `Q${i+1}: ${item.question}\n\nA: ${item.model_answer}`).join("\n\n---\n\n")}
                 label="Copy All Q&A"
               />
             </div>
-            {qa.length === 0 && <p className="muted">No interview questions generated.</p>}
+
+            {qa.length === 0 && (
+              <div className="rp-empty-state">
+                <div className="rp-empty-icon">🎤</div>
+                <p>No interview questions generated.</p>
+              </div>
+            )}
+
             {qa.map((item, i) => (
-              <div key={i} className="qa-item">
-                <p className="question">
-                  Q{i + 1}: {item.question}
-                  {item.type && <span className="qa-type">{item.type}</span>}
-                </p>
-                <div className="qa-answer-row">
-                  <p className="answer">A: {item.model_answer}</p>
-                  <CopyButton text={item.model_answer} />
+              <div key={i} className="rp-qa-card">
+                <div className="rp-qa-header">
+                  <span className="rp-qa-num">Q{i + 1}</span>
+                  {item.type && (
+                    <span className={`rp-qa-type rp-qa-type--${item.type?.toLowerCase().replace(/\s+/g,"-")}`}>
+                      {item.type}
+                    </span>
+                  )}
+                  <CopyButton text={item.model_answer} label="Copy Answer" />
+                </div>
+                <p className="rp-qa-question">{item.question}</p>
+                <div className="rp-qa-answer-wrap">
+                  <div className="rp-qa-answer-label">Model Answer</div>
+                  <p className="rp-qa-answer">{item.model_answer}</p>
                 </div>
               </div>
             ))}
           </div>
         )}
 
+        {/* ── ATS SCORE ── */}
         {tab === 4 && (
-          <div className="ats-panel">
-            <div className="score-badge">{atsScore ?? "--"} / 100</div>
-            {ats.overall_assessment && <p className="ats-assessment">{ats.overall_assessment}</p>}
-            <div className="row-2">
+          <div className="rp-ats">
+            {/* Score hero */}
+            <div className="rp-ats-hero">
+              <div className="rp-ats-score-wrap">
+                <div className="rp-ats-score-num" style={{
+                  color: atsScore >= 65 ? "#10b981" : atsScore >= 40 ? "#f59e0b" : "#f87171"
+                }}>
+                  {atsScore ?? "--"}
+                </div>
+                <div className="rp-ats-score-denom">/100</div>
+                <div className="rp-ats-score-label">ATS Score</div>
+              </div>
+              <div className="rp-ats-bar-wrap">
+                <div className="rp-ats-bar-track">
+                  <div
+                    className="rp-ats-bar-fill"
+                    style={{
+                      width: `${atsScore ?? 0}%`,
+                      background: atsScore >= 65 ? "linear-gradient(90deg,#059669,#10b981)"
+                               : atsScore >= 40 ? "linear-gradient(90deg,#d97706,#f59e0b)"
+                               : "linear-gradient(90deg,#dc2626,#f87171)"
+                    }}
+                  />
+                </div>
+                {ats.overall_assessment && (
+                  <p className="rp-ats-assessment">{ats.overall_assessment}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Keywords grid */}
+            <div className="rp-skills-grid">
               {(ats.keyword_matches || []).length > 0 && (
-                <div>
-                  <h4>Keyword Matches</h4>
-                  <ul>
-                    {ats.keyword_matches.map((k) => (
-                      <li key={k} className="skill-match">{k}</li>
-                    ))}
-                  </ul>
+                <div className="rp-skills-col">
+                  <div className="rp-skills-col-header rp-skills-col-header--match">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Keyword Matches
+                    <span className="rp-skills-count">{ats.keyword_matches.length}</span>
+                  </div>
+                  <div className="rp-chips-wrap">
+                    {ats.keyword_matches.map(k => <Chip key={k} label={k} variant="match" />)}
+                  </div>
                 </div>
               )}
               {(ats.keyword_misses || []).length > 0 && (
-                <div>
-                  <h4>Missing Keywords</h4>
-                  <ul>
-                    {ats.keyword_misses.map((k) => (
-                      <li key={k} className="skill-miss">{k}</li>
-                    ))}
-                  </ul>
+                <div className="rp-skills-col">
+                  <div className="rp-skills-col-header rp-skills-col-header--miss">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                    Missing Keywords
+                    <span className="rp-skills-count">{ats.keyword_misses.length}</span>
+                  </div>
+                  <div className="rp-chips-wrap">
+                    {ats.keyword_misses.map(k => <Chip key={k} label={k} variant="miss" />)}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Formatting tips */}
             {(ats.formatting_suggestions || []).length > 0 && (
-              <div className="formatting-tips">
-                <h4>Formatting Tips</h4>
-                <ul>
+              <div className="rp-tips">
+                <div className="rp-tips-header">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  Formatting Tips
+                </div>
+                <ol className="rp-tips-list">
                   {ats.formatting_suggestions.map((tip, i) => (
                     <li key={i}>{tip}</li>
                   ))}
-                </ul>
+                </ol>
               </div>
             )}
+
+            {/* Token usage */}
             {analysis.input_tokens != null && (
-              <p className="token-info">
-                Tokens used — Input: {analysis.input_tokens} | Output: {analysis.output_tokens}
-              </p>
+              <div className="rp-token-row">
+                <span>Tokens used</span>
+                <span className="rp-token-val">in {analysis.input_tokens.toLocaleString()}</span>
+                <span className="rp-token-sep">·</span>
+                <span className="rp-token-val">out {analysis.output_tokens.toLocaleString()}</span>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {/* ── Re-analyze progress overlay ── */}
+      {/* ══ RE-ANALYZE OVERLAY ══════════════════════════════ */}
       {reanalyzing && (
         <div className="reanalyze-overlay">
           <div className="stream-card" style={{ maxWidth: "520px", width: "100%" }}>
@@ -354,41 +554,44 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {/* ── Re-analyze modal ── */}
+      {/* ══ RE-ANALYZE MODAL ════════════════════════════════ */}
       {reanalyzeModal && (
         <div className="modal-overlay" onClick={() => setReanalyzeModal(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <h3>Re-analyze Application</h3>
             <p className="modal-sub">Optionally upload an updated resume, or re-run with the existing one.</p>
-
-            <label className={`upload-zone${newResumeFile ? " upload-zone--done" : ""}`} style={{ marginTop: "1rem" }}>
+            <label className={`upload-zone2 upload-zone2--modal${newResumeFile ? " upload-zone2--done" : ""}`} style={{ marginTop: "1rem" }}>
               <input type="file" accept="application/pdf" onChange={handleNewResumePDF} style={{ display: "none" }} />
               {newResumeFile ? (
-                <>
-                  <span className="upload-icon">✓</span>
-                  <span className="upload-filename">{newResumeFile.name}</span>
-                  <span className="upload-hint">{newResumeText.length} chars extracted</span>
-                </>
+                <div className="uz2-body">
+                  <div className="uz2-icon uz2-icon--done">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </div>
+                  <div className="uz2-text">
+                    <span className="uz2-title">{newResumeFile.name}</span>
+                    <span className="uz2-sub">{newResumeText.length} chars extracted</span>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <span className="upload-icon">📄</span>
-                  <span className="upload-prompt">Upload new resume (optional)</span>
-                  <span className="upload-hint">Leave blank to re-run with existing resume</span>
-                </>
+                <div className="uz2-idle">
+                  <span className="uz2-idle-title">Upload new resume (optional)</span>
+                  <span className="uz2-idle-sub">Leave blank to re-run with existing resume</span>
+                </div>
               )}
             </label>
-
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setReanalyzeModal(false)}>Cancel</button>
               <button className="btn-primary" onClick={reanalyze}>
-                {newResumeFile ? "Update Resume & Re-analyze" : "Re-analyze"}
+                {newResumeFile ? "Update & Re-analyze" : "Re-analyze"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Career Coach floating chat ── */}
+      {/* ══ CAREER COACH FAB + PANEL ════════════════════════ */}
       {!chatOpen && (
         <button className="coach-fab" onClick={() => setChatOpen(true)} title="Career Coach">
           🎤 <span className="coach-fab-label">Career Coach</span>
@@ -403,23 +606,14 @@ export default function ResultsPage() {
               <span className="coach-panel-sub">Ask anything about this application</span>
             </div>
             <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-              <button
-                className="coach-expand-btn"
-                onClick={() => setChatExpanded((e) => !e)}
-                title={chatExpanded ? "Collapse" : "Expand"}
-              >
+              <button className="coach-expand-btn" onClick={() => setChatExpanded(e => !e)} title={chatExpanded ? "Collapse" : "Expand"}>
                 {chatExpanded ? "⊡" : "⊞"}
               </button>
-              <button
-                className="coach-expand-btn"
-                onClick={() => { setChatOpen(false); setChatExpanded(false); }}
-                title="Close"
-              >
+              <button className="coach-expand-btn" onClick={() => { setChatOpen(false); setChatExpanded(false); }} title="Close">
                 ✕
               </button>
             </div>
           </div>
-
           <div className="coach-messages">
             {messages.length === 0 && (
               <div className="coach-empty">
@@ -427,9 +621,7 @@ export default function ResultsPage() {
               </div>
             )}
             {messages.map((m, i) => (
-              <div key={i} className={`coach-msg coach-msg--${m.role}`}>
-                {m.text}
-              </div>
+              <div key={i} className={`coach-msg coach-msg--${m.role}`}>{m.text}</div>
             ))}
             {coachLoading && (
               <div className="coach-msg coach-msg--coach coach-typing">
@@ -438,7 +630,6 @@ export default function ResultsPage() {
             )}
             <div ref={chatBottomRef} />
           </div>
-
           <form className="coach-input-row" onSubmit={askCoach}>
             <input
               value={question}
@@ -446,9 +637,7 @@ export default function ResultsPage() {
               placeholder="e.g. How do I address the missing skills?"
               disabled={coachLoading}
             />
-            <button type="submit" className="coach-send" disabled={coachLoading || !question.trim()}>
-              ↑
-            </button>
+            <button type="submit" className="coach-send" disabled={coachLoading || !question.trim()}>↑</button>
           </form>
         </div>
       )}

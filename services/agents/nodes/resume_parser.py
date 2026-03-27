@@ -92,6 +92,8 @@ def resume_parser_node(state: AgentState) -> AgentState:
             **state,
             "resume_parsed": resume_dict,
             "completed_agents": state.get("completed_agents", []) + ["resume_parser"],
+            "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,
+            "output_tokens": state.get("output_tokens", 0) + llm.output_tokens,
         }
 
     except Exception as exc:
