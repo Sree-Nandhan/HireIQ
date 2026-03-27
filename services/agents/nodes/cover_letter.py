@@ -1,4 +1,5 @@
 import json
+import logging
 import traceback
 
 from agents.tools.gemini import GeminiClient
@@ -7,9 +8,13 @@ from langchain_core.messages import HumanMessage
 from agents.config import settings
 from agents.state import AgentState
 
+logger = logging.getLogger(__name__)
+
 
 def cover_letter_node(state: AgentState) -> AgentState:
     """Generate a professional, personalized 3-paragraph cover letter."""
+    session_id = state.get("session_id", "?")
+    logger.info("cover_letter_node: starting [session=%s]", session_id)
     try:
         resume_parsed = state.get("resume_parsed") or {}
         jd_parsed = state.get("jd_parsed") or {}
@@ -40,6 +45,11 @@ def cover_letter_node(state: AgentState) -> AgentState:
         response = llm.invoke([message])
         cover_letter_text = response.content.strip()
 
+        logger.info(
+            "cover_letter_node: done [session=%s] cover_letter_len=%d",
+            session_id,
+            len(cover_letter_text),
+        )
         return {
             **state,
             "cover_letter": cover_letter_text,
@@ -48,6 +58,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"cover_letter_node error: {traceback.format_exc()}"
+        logger.error("cover_letter_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

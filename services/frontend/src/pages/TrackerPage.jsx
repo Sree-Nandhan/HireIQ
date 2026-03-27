@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/client";
 
+const LOG = "[TrackerPage]";
+
 function guessDomain(company) {
   if (!company) return null;
   const cleaned = company
@@ -14,13 +16,12 @@ function guessDomain(company) {
 }
 
 function CompanyAvatar({ company }) {
-  const [logoOk, setLogoOk] = useState(null); // null=loading, true=ok, false=failed
-  const domain = guessDomain(company);
+  const [logoOk, setLogoOk] = useState(null);
+  const domain   = guessDomain(company);
   const initials = (company || "?").slice(0, 2).toUpperCase();
-  const logoUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null;
+  const logoUrl  = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : null;
 
   const handleLoad = (e) => {
-    // Google returns a 16×16 globe for unknown domains even when sz=128 is requested
     setLogoOk(e.target.naturalWidth > 16);
   };
 
@@ -60,9 +61,9 @@ const FILTERS = [
 ];
 
 function MatchRing({ pct }) {
-  const r = 22;
-  const circ = 2 * Math.PI * r;
-  const fill = ((pct || 0) / 100) * circ;
+  const r     = 22;
+  const circ  = 2 * Math.PI * r;
+  const fill  = ((pct || 0) / 100) * circ;
   const color = pct >= 60 ? "#10b981" : pct >= 35 ? "#f59e0b" : "#ef4444";
   return (
     <svg width="56" height="56" viewBox="0 0 56 56" style={{ flexShrink: 0 }}>
@@ -83,16 +84,23 @@ function MatchRing({ pct }) {
 }
 
 export default function TrackerPage() {
-  const [apps, setApps]         = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [filter, setFilter]     = useState("");
+  const [apps, setApps]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState("");
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     const load = async () => {
+      console.log(`${LOG} Loading applications (filter="${filter}")`);
       try {
         const params = filter ? { status: filter } : {};
         const res = await api.get("/applications", { params });
         setApps(res.data);
+        console.log(`${LOG} Loaded ${res.data.length} applications`);
+      } catch (err) {
+        const msg = err.response?.data?.detail || "Failed to load applications.";
+        console.error(`${LOG} Failed to load applications:`, msg, err);
+        setActionError(msg);
       } finally {
         setLoading(false);
       }
@@ -101,21 +109,34 @@ export default function TrackerPage() {
   }, [filter]);
 
   const updateStatus = async (id, newStatus) => {
+    console.log(`${LOG} Updating app id=${id} status → "${newStatus}"`);
+    setActionError("");
     try {
       await api.patch(`/applications/${id}/status`, { status: newStatus });
       setApps((prev) => prev.map((a) => (a.id === id ? { ...a, status: newStatus } : a)));
-    } catch { /* ignore */ }
+      console.log(`${LOG} Status updated: app id=${id} is now "${newStatus}"`);
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Failed to update status.";
+      console.error(`${LOG} Failed to update status for app id=${id}:`, msg, err);
+      setActionError(msg);
+    }
   };
 
   const deleteApp = async (id) => {
     if (!window.confirm("Delete this application? This cannot be undone.")) return;
+    console.log(`${LOG} Deleting app id=${id}`);
+    setActionError("");
     try {
       await api.delete(`/applications/${id}`);
       setApps((prev) => prev.filter((a) => a.id !== id));
-    } catch { /* ignore */ }
+      console.log(`${LOG} Deleted app id=${id}`);
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Failed to delete application.";
+      console.error(`${LOG} Failed to delete app id=${id}:`, msg, err);
+      setActionError(msg);
+    }
   };
 
-  // Stats
   const counts = apps.reduce((acc, a) => {
     acc[a.status] = (acc[a.status] || 0) + 1;
     return acc;
@@ -133,6 +154,14 @@ export default function TrackerPage() {
         </div>
         <Link to="/analyze" className="btn-primary">+ New Analysis</Link>
       </div>
+
+      {/* Inline action error banner */}
+      {actionError && (
+        <div className="error-banner">
+          {actionError}
+          <button className="error-banner-close" onClick={() => setActionError("")}>✕</button>
+        </div>
+      )}
 
       {/* Stats row */}
       {apps.length > 0 && (

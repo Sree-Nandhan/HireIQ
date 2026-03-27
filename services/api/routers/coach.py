@@ -73,6 +73,13 @@ async def coach(
             detail="No analysis found for this application. Run /analyze first.",
         )
 
+    logger.info(
+        "Coach question from user=%d app_id=%d: %r",
+        current_user.id,
+        application.id,
+        payload.question[:120],
+    )
+
     agent_payload = {
         "question": payload.question,
         "resume_text": application.resume_text,
@@ -84,6 +91,10 @@ async def coach(
         "ats_score": {"score": analysis.ats_score} if analysis.ats_score else {},
     }
 
+    logger.info(
+        "Forwarding coach request to agent service for app_id=%d",
+        application.id,
+    )
     try:
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT_SECONDS) as client:
             response = await client.post(
@@ -93,24 +104,33 @@ async def coach(
             response.raise_for_status()
             data = response.json()
     except httpx.TimeoutException as exc:
+        logger.error("Coach service timed out for app_id=%d: %s", application.id, exc)
         raise HTTPException(
             status_code=http_status.HTTP_504_GATEWAY_TIMEOUT,
             detail="The coach service did not respond in time.",
         ) from exc
     except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Coach service returned HTTP %d for app_id=%d: %s",
+            exc.response.status_code,
+            application.id,
+            exc.response.text,
+        )
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail=f"Coach service error: {exc.response.text}",
         ) from exc
     except httpx.RequestError as exc:
+        logger.error("Could not reach coach service for app_id=%d: %s", application.id, exc)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail="Could not reach the agent service.",
         ) from exc
 
     logger.info(
-        "Coach answered question for application id=%d user=%d",
+        "Coach answered for app_id=%d user=%d answer_len=%d",
         application.id,
         current_user.id,
+        len(data.get("answer", "")),
     )
     return CoachResponse(answer=data["answer"])

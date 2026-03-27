@@ -2,6 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+const LOG = "[AuthPage]";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const FEATURES = [
   { icon: "📊", title: "Gap Analysis",     desc: "See exactly where your skills stand against the job." },
   { icon: "✏️",  title: "Tailored Bullets", desc: "AI rewrites your resume bullets to match the JD."    },
@@ -12,6 +16,7 @@ const FEATURES = [
 export default function AuthPage() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
+
   const [mode, setMode]           = useState("login");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName]   = useState("");
@@ -21,27 +26,90 @@ export default function AuthPage() {
   const [loading, setLoading]     = useState(false);
   const [welcome, setWelcome]     = useState("");
 
+  // Field-level validation errors
+  const [fieldErrors, setFieldErrors] = useState({});
+  // Track which fields have been touched (blurred)
+  const [touched, setTouched] = useState({});
+
+  const validateFields = () => {
+    const errs = {};
+    if (mode === "register") {
+      if (!firstName.trim()) errs.firstName = "First name is required.";
+      if (!lastName.trim())  errs.lastName  = "Last name is required.";
+    }
+    if (!email.trim()) {
+      errs.email = "Email is required.";
+    } else if (!EMAIL_RE.test(email.trim())) {
+      errs.email = "Enter a valid email address.";
+    }
+    if (!password) {
+      errs.password = "Password is required.";
+    } else if (password.length < 8) {
+      errs.password = "Password must be at least 8 characters.";
+    }
+    return errs;
+  };
+
+  const handleBlur = (field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const errs = validateFields();
+    setFieldErrors(errs);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setWelcome("");
+
+    // Mark all fields as touched so errors are visible
+    setTouched(
+      mode === "register"
+        ? { firstName: true, lastName: true, email: true, password: true }
+        : { email: true, password: true }
+    );
+
+    const errs = validateFields();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      console.warn(`${LOG} Submit blocked — validation errors:`, errs);
+      return;
+    }
+
     setLoading(true);
+    console.log(`${LOG} Submitting ${mode} for:`, email);
     try {
       if (mode === "login") {
         await login(email, password);
+        console.log(`${LOG} Login complete — navigating to /tracker`);
         navigate("/tracker");
       } else {
         await register(email, password, firstName, lastName);
         const name = firstName || email.split("@")[0];
         setWelcome(`Welcome to HireIQ, ${name}! Your account is ready.`);
+        console.log(`${LOG} Registration complete — navigating in 1.8s`);
         setTimeout(() => navigate("/tracker"), 1800);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || "Authentication failed.");
+      const msg = err.response?.data?.detail || "Authentication failed. Please try again.";
+      console.error(`${LOG} ${mode} failed:`, msg, err);
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
+
+  const switchMode = () => {
+    const next = mode === "login" ? "register" : "login";
+    console.log(`${LOG} Switching mode to: ${next}`);
+    setMode(next);
+    setError("");
+    setWelcome("");
+    setFieldErrors({});
+    setTouched({});
+  };
+
+  const fe = (field) =>
+    touched[field] && fieldErrors[field] ? fieldErrors[field] : null;
 
   return (
     <div className="auth-layout">
@@ -75,7 +143,7 @@ export default function AuthPage() {
               : "Start analyzing your applications today"}
           </p>
 
-          <form onSubmit={submit} className="auth-form">
+          <form onSubmit={submit} className="auth-form" noValidate>
             {mode === "register" && (
               <div className="auth-row">
                 <div className="auth-field">
@@ -84,10 +152,12 @@ export default function AuthPage() {
                     type="text"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    required
+                    onBlur={() => handleBlur("firstName")}
                     placeholder="Jane"
                     autoComplete="given-name"
+                    className={fe("firstName") ? "input--invalid" : ""}
                   />
+                  {fe("firstName") && <span className="field-error">{fe("firstName")}</span>}
                 </div>
                 <div className="auth-field">
                   <label>Last Name</label>
@@ -95,34 +165,47 @@ export default function AuthPage() {
                     type="text"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    required
+                    onBlur={() => handleBlur("lastName")}
                     placeholder="Smith"
                     autoComplete="family-name"
+                    className={fe("lastName") ? "input--invalid" : ""}
                   />
+                  {fe("lastName") && <span className="field-error">{fe("lastName")}</span>}
                 </div>
               </div>
             )}
+
             <div className="auth-field">
               <label>Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
+                onBlur={() => handleBlur("email")}
                 placeholder="you@example.com"
                 autoComplete="email"
+                className={fe("email") ? "input--invalid" : ""}
               />
+              {fe("email") && <span className="field-error">{fe("email")}</span>}
             </div>
+
             <div className="auth-field">
               <label>Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
+                onBlur={() => handleBlur("password")}
                 placeholder="••••••••"
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
+                className={fe("password") ? "input--invalid" : ""}
               />
+              {fe("password") && <span className="field-error">{fe("password")}</span>}
+              {mode === "register" && !fe("password") && password && password.length < 8 && (
+                <span className="field-hint">
+                  {8 - password.length} more character{8 - password.length !== 1 ? "s" : ""} needed
+                </span>
+              )}
             </div>
 
             {error   && <p className="auth-error">{error}</p>}
@@ -137,10 +220,7 @@ export default function AuthPage() {
 
           <p className="auth-switch">
             {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-            <button
-              className="auth-switch-btn"
-              onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
-            >
+            <button className="auth-switch-btn" onClick={switchMode}>
               {mode === "login" ? "Register" : "Sign In"}
             </button>
           </p>

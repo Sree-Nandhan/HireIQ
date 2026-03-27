@@ -1,3 +1,4 @@
+import logging
 import traceback
 from typing import List
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 from agents.config import settings
 from agents.state import AgentState
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
@@ -22,6 +25,8 @@ class CompanyResearch(BaseModel):
 
 def company_researcher_node(state: AgentState) -> AgentState:
     """Infer company insights from the job description using the LLM."""
+    session_id = state.get("session_id", "?")
+    logger.info("company_researcher_node: starting [session=%s]", session_id)
     try:
         jd_parsed = state.get("jd_parsed") or {}
         company = jd_parsed.get("company") or ""
@@ -49,14 +54,21 @@ def company_researcher_node(state: AgentState) -> AgentState:
         research_dict = research.model_dump()
         research_dict["recent_projects"] = cleaned_projects
 
+        logger.info(
+            "company_researcher_node: done [session=%s] company=%r projects=%d",
+            session_id,
+            research_dict.get("company_name"),
+            len(research_dict.get("recent_projects", [])),
+        )
         return {
             **state,
             "company_research": research_dict,
             "completed_agents": state.get("completed_agents", []) + ["company_researcher"],
         }
 
-    except Exception:
+    except Exception as exc:
         error_msg = f"company_researcher_node error: {traceback.format_exc()}"
+        logger.error("company_researcher_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

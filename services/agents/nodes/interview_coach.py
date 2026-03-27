@@ -1,4 +1,5 @@
 import json
+import logging
 import traceback
 from typing import List
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from agents.config import settings
 from agents.state import AgentState
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 class InterviewQA(BaseModel):
@@ -24,6 +27,8 @@ class InterviewQAList(BaseModel):
 
 def interview_coach_node(state: AgentState) -> AgentState:
     """Generate 8 tailored interview questions with model answers."""
+    session_id = state.get("session_id", "?")
+    logger.info("interview_coach_node: starting [session=%s]", session_id)
     try:
         resume_parsed = state.get("resume_parsed") or {}
         jd_parsed = state.get("jd_parsed") or {}
@@ -49,6 +54,11 @@ def interview_coach_node(state: AgentState) -> AgentState:
         result: InterviewQAList = invoke_structured(llm, prompt, InterviewQAList)
         qa_list = [qa.model_dump() for qa in result.qa_pairs]
 
+        logger.info(
+            "interview_coach_node: done [session=%s] qa_pairs=%d",
+            session_id,
+            len(qa_list),
+        )
         return {
             **state,
             "interview_qa": qa_list,
@@ -57,6 +67,7 @@ def interview_coach_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"interview_coach_node error: {traceback.format_exc()}"
+        logger.error("interview_coach_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

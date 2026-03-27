@@ -204,7 +204,9 @@ def update_resume_text(
         db.refresh(application)
     except Exception as exc:
         db.rollback()
+        logger.exception("Failed to update resume for application id=%d: %s", application_id, exc)
         raise HTTPException(status_code=500, detail="Failed to update resume.") from exc
+    logger.info("Updated resume text for application id=%d (%d chars)", application_id, len(resume_text))
     return JobApplicationResponse(**_enrich_response(application))
 
 

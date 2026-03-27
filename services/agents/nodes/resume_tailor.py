@@ -1,4 +1,5 @@
 import json
+import logging
 import traceback
 from typing import List
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from agents.config import settings
 from agents.state import AgentState
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 class TailoredBullet(BaseModel):
@@ -22,6 +25,8 @@ class TailoredBullets(BaseModel):
 
 def resume_tailor_node(state: AgentState) -> AgentState:
     """Rewrite the top 5 most relevant resume bullet points to match the JD keywords."""
+    session_id = state.get("session_id", "?")
+    logger.info("resume_tailor_node: starting [session=%s]", session_id)
     try:
         resume_parsed = state.get("resume_parsed") or {}
         jd_parsed = state.get("jd_parsed") or {}
@@ -74,6 +79,11 @@ def resume_tailor_node(state: AgentState) -> AgentState:
             and b.tailored.strip().lower() not in _null
         ]
 
+        logger.info(
+            "resume_tailor_node: done [session=%s] bullets_returned=%d",
+            session_id,
+            len(tailored_list),
+        )
         return {
             **state,
             "tailored_bullets": tailored_list,
@@ -82,6 +92,7 @@ def resume_tailor_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"resume_tailor_node error: {traceback.format_exc()}"
+        logger.error("resume_tailor_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

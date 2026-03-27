@@ -34,7 +34,20 @@ async def extract_resume_text(
     Raises **400** if the file is not a PDF or exceeds 5 MB.
     Raises **422** if the PDF cannot be parsed.
     """
+    logger.info(
+        "Resume upload received: filename=%r content_type=%r user=%d",
+        file.filename,
+        file.content_type,
+        current_user.id,
+    )
+
     if file.content_type not in ("application/pdf", "application/octet-stream"):
+        logger.warning(
+            "Rejected non-PDF upload: filename=%r content_type=%r user=%d",
+            file.filename,
+            file.content_type,
+            current_user.id,
+        )
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are accepted.",

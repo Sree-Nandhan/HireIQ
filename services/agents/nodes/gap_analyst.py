@@ -1,3 +1,4 @@
+import logging
 import re
 import traceback
 from typing import List
@@ -8,6 +9,8 @@ from agents.tools.gemini import GeminiClient
 from agents.config import settings
 from agents.state import AgentState
 from agents.tools.rag import query_collection
+
+logger = logging.getLogger(__name__)
 
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
@@ -46,6 +49,8 @@ def _skill_match(skill: str, resume_text: str, resume_skills: List[str]) -> str:
 
 def gap_analyst_node(state: AgentState) -> AgentState:
     """Perform a gap analysis between the parsed resume and the parsed JD."""
+    session_id = state.get("session_id", "?")
+    logger.info("gap_analyst_node: starting [session=%s]", session_id)
     try:
         resume_parsed = state.get("resume_parsed") or {}
         jd_parsed = state.get("jd_parsed") or {}
@@ -116,6 +121,14 @@ def gap_analyst_node(state: AgentState) -> AgentState:
         except Exception:
             summary = f"Candidate matches {match_pct}% of the job requirements."
 
+        logger.info(
+            "gap_analyst_node: done [session=%s] match=%.1f%% matching=%d missing=%d partial=%d",
+            session_id,
+            match_pct,
+            len(matching_skills),
+            len(missing_skills),
+            len(partial_matches),
+        )
         return {
             **state,
             "gap_analysis": {
@@ -128,8 +141,9 @@ def gap_analyst_node(state: AgentState) -> AgentState:
             "completed_agents": state.get("completed_agents", []) + ["gap_analyst"],
         }
 
-    except Exception:
+    except Exception as exc:
         error_msg = f"gap_analyst_node error: {traceback.format_exc()}"
+        logger.error("gap_analyst_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import api from "../api/client";
 import { useSimulatedProgress, AGENT_STEPS } from "../hooks/useSSE";
 
+const LOG = "[ResultsPage]";
 const TABS = ["Gap Analysis", "Tailored Bullets", "Cover Letter", "Interview Q&A", "ATS Score"];
 
 function CopyButton({ text, label = "Copy" }) {
@@ -23,34 +24,41 @@ function CopyButton({ text, label = "Copy" }) {
 
 export default function ResultsPage() {
   const { id } = useParams();
-  const [app, setApp] = useState(null);
+  const [app, setApp]           = useState(null);
   const [analysis, setAnalysis] = useState(null);
-  const [tab, setTab] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [reanalyzing, setReanalyzing] = useState(false);
+  const [tab, setTab]           = useState(0);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState("");
+  const [reanalyzing, setReanalyzing]   = useState(false);
   const [reanalyzeDone, setReanalyzeDone] = useState(false);
   const { currentStep, progress } = useSimulatedProgress(reanalyzing, reanalyzeDone);
   const [reanalyzeModal, setReanalyzeModal] = useState(false);
-  const [newResumeFile, setNewResumeFile] = useState(null);
-  const [newResumeText, setNewResumeText] = useState("");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [newResumeFile, setNewResumeFile]   = useState(null);
+  const [newResumeText, setNewResumeText]   = useState("");
+  const [chatOpen, setChatOpen]       = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [question, setQuestion] = useState("");
+  const [messages, setMessages]       = useState([]);
+  const [question, setQuestion]       = useState("");
   const [coachLoading, setCoachLoading] = useState(false);
   const chatBottomRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
+      console.log(`${LOG} Loading application id=${id}`);
       try {
         const res = await api.get(`/applications/${id}`);
         setApp(res.data);
         if (res.data.analyses?.length > 0) {
-          setAnalysis(res.data.analyses[res.data.analyses.length - 1]);
+          const latest = res.data.analyses[res.data.analyses.length - 1];
+          setAnalysis(latest);
+          console.log(`${LOG} Loaded analysis id=${latest.id}, ats_score=${latest.ats_score}, match=${latest.match_percentage}%`);
+        } else {
+          console.warn(`${LOG} No analyses found for application id=${id}`);
         }
-      } catch {
-        setError("Could not load results.");
+      } catch (err) {
+        const msg = err.response?.data?.detail || "Could not load results.";
+        console.error(`${LOG} Failed to load application id=${id}:`, msg, err);
+        setError(msg);
       } finally {
         setLoading(false);
       }
@@ -59,44 +67,57 @@ export default function ResultsPage() {
   }, [id]);
 
   if (loading) return <div className="center-msg">Loading results...</div>;
-  if (error) return <div className="center-msg error">{error}</div>;
+  if (error)   return <div className="center-msg error">{error}</div>;
   if (!analysis) return <div className="center-msg">No analysis found for this application.</div>;
 
-  const gap = analysis.gap_analysis || {};
+  const gap     = analysis.gap_analysis || {};
   const bullets = analysis.tailored_bullets || [];
-  const qa = analysis.interview_qa || [];
-  const ats = analysis.ats_details || {};
+  const qa      = analysis.interview_qa || [];
+  const ats     = analysis.ats_details || {};
   const atsScore = analysis.ats_score ?? ats.score ?? null;
 
   const handleNewResumePDF = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    console.log(`${LOG} New resume PDF selected: ${file.name}`);
     setNewResumeFile(file);
     const form = new FormData();
     form.append("file", file);
     try {
       const res = await api.post("/resume/extract", form, { headers: { "Content-Type": "multipart/form-data" } });
+      console.log(`${LOG} New resume extracted: ${res.data.text?.length ?? 0} chars`);
       setNewResumeText(res.data.text);
-    } catch { setNewResumeText(""); }
+    } catch (err) {
+      console.error(`${LOG} Failed to extract new resume PDF:`, err.response?.data?.detail || err.message, err);
+      setNewResumeText("");
+    }
   };
 
   const reanalyze = async () => {
     if (reanalyzing) return;
+    console.log(`${LOG} Starting re-analysis for app id=${id}${newResumeText ? " with updated resume" : ""}`);
     setReanalyzing(true);
     setReanalyzeModal(false);
     try {
       if (newResumeText.trim()) {
+        console.log(`${LOG} Updating resume text for app id=${id}`);
         await api.patch(`/applications/${id}/resume`, { resume_text: newResumeText });
       }
       await api.post("/analyze", { application_id: Number(id) });
+      console.log(`${LOG} Re-analysis pipeline completed`);
       setReanalyzeDone(true);
-      // brief pause so progress bar hits 100%, then refresh results
       await new Promise((r) => setTimeout(r, 800));
       const res = await api.get(`/applications/${id}`);
       setApp(res.data);
-      if (res.data.analyses?.length > 0)
-        setAnalysis(res.data.analyses[res.data.analyses.length - 1]);
-    } catch { /* ignore */ } finally {
+      if (res.data.analyses?.length > 0) {
+        const latest = res.data.analyses[res.data.analyses.length - 1];
+        setAnalysis(latest);
+        console.log(`${LOG} Re-analysis saved: ats_score=${latest.ats_score}, match=${latest.match_percentage}%`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Re-analysis failed.";
+      console.error(`${LOG} Re-analysis failed for app id=${id}:`, msg, err);
+    } finally {
       setReanalyzing(false);
       setReanalyzeDone(false);
       setNewResumeFile(null);
@@ -108,13 +129,17 @@ export default function ResultsPage() {
     e.preventDefault();
     if (!question.trim() || coachLoading) return;
     const q = question.trim();
+    console.log(`${LOG} Sending coach question for app id=${id}:`, q);
     setMessages((prev) => [...prev, { role: "user", text: q }]);
     setQuestion("");
     setCoachLoading(true);
     try {
       const res = await api.post("/coach", { application_id: Number(id), question: q });
+      console.log(`${LOG} Coach answer received (${res.data.answer?.length ?? 0} chars)`);
       setMessages((prev) => [...prev, { role: "coach", text: res.data.answer }]);
-    } catch {
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message;
+      console.error(`${LOG} Coach request failed:`, msg, err);
       setMessages((prev) => [...prev, { role: "coach", text: "Sorry, I couldn't answer that right now. Try again." }]);
     } finally {
       setCoachLoading(false);
@@ -139,7 +164,14 @@ export default function ResultsPage() {
 
       <div className="tab-row">
         {TABS.map((t, i) => (
-          <button key={t} className={tab === i ? "tab active" : "tab"} onClick={() => setTab(i)}>
+          <button
+            key={t}
+            className={tab === i ? "tab active" : "tab"}
+            onClick={() => {
+              console.log(`${LOG} Switching to tab: ${t}`);
+              setTab(i);
+            }}
+          >
             {t}
           </button>
         ))}
@@ -186,9 +218,14 @@ export default function ResultsPage() {
         {tab === 1 && (
           <div className="bullets-list">
             <div className="tab-toolbar">
-              <CopyButton text={bullets.filter(b => b.tailored?.trim()).map(b => b.tailored).join("\n\n")} label="Copy All Bullets" />
+              <CopyButton
+                text={bullets.filter(b => b.tailored?.trim()).map(b => b.tailored).join("\n\n")}
+                label="Copy All Bullets"
+              />
             </div>
-            {bullets.filter(b => b.tailored?.trim()).length === 0 && <p className="muted">No tailored bullets — the resume may not have enough experience bullets to rewrite.</p>}
+            {bullets.filter(b => b.tailored?.trim()).length === 0 && (
+              <p className="muted">No tailored bullets — the resume may not have enough experience bullets to rewrite.</p>
+            )}
             {bullets.filter(b => b.tailored?.trim()).map((b, i) => (
               <div key={i} className="bullet-card">
                 <p className="bullet-original"><span className="label">Original</span>{b.original}</p>
@@ -278,7 +315,6 @@ export default function ResultsPage() {
             )}
           </div>
         )}
-
       </div>
 
       {/* ── Re-analyze progress overlay ── */}
@@ -295,11 +331,13 @@ export default function ResultsPage() {
                   style={{ width: `${Math.round(progress * 100)}%` }}
                 />
               </div>
-              <span className={`progress-pct${reanalyzeDone ? " done" : ""}`}>{Math.round(progress * 100)}%</span>
+              <span className={`progress-pct${reanalyzeDone ? " done" : ""}`}>
+                {Math.round(progress * 100)}%
+              </span>
             </div>
             <ul className="step-list">
               {AGENT_STEPS.map((s, i) => {
-                const isDone = i < currentStep;
+                const isDone   = i < currentStep;
                 const isActive = i === currentStep && !reanalyzeDone;
                 return (
                   <li key={s.key} className={isDone ? "done" : isActive ? "active" : ""}>

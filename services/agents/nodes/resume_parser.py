@@ -1,3 +1,4 @@
+import logging
 import traceback
 from typing import List, Optional
 
@@ -8,6 +9,8 @@ from agents.config import settings
 from agents.state import AgentState
 from agents.tools.rag import index_documents
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
@@ -49,6 +52,8 @@ class ParsedResume(BaseModel):
 
 def resume_parser_node(state: AgentState) -> AgentState:
     """Parse the raw resume text into structured data and index it in ChromaDB."""
+    session_id = state.get("session_id", "?")
+    logger.info("resume_parser_node: starting [session=%s] resume_len=%d", session_id, len(state.get("resume_text", "")))
     try:
         llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
 
@@ -77,6 +82,12 @@ def resume_parser_node(state: AgentState) -> AgentState:
         except Exception:
             pass
 
+        logger.info(
+            "resume_parser_node: done [session=%s] name=%r skills=%d",
+            session_id,
+            resume_dict.get("name"),
+            len(resume_dict.get("skills", [])),
+        )
         return {
             **state,
             "resume_parsed": resume_dict,
@@ -85,6 +96,7 @@ def resume_parser_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"resume_parser_node error: {traceback.format_exc()}"
+        logger.error("resume_parser_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

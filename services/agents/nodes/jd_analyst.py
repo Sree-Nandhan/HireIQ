@@ -1,3 +1,4 @@
+import logging
 import traceback
 from typing import List, Optional
 
@@ -8,6 +9,8 @@ from agents.config import settings
 from agents.state import AgentState
 from agents.tools.rag import index_documents
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
@@ -40,6 +43,8 @@ class ParsedJD(BaseModel):
 
 def jd_analyst_node(state: AgentState) -> AgentState:
     """Parse the job description into structured data and index it in ChromaDB."""
+    session_id = state.get("session_id", "?")
+    logger.info("jd_analyst_node: starting [session=%s] jd_len=%d", session_id, len(state.get("job_description", "")))
     try:
         llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
 
@@ -69,6 +74,12 @@ def jd_analyst_node(state: AgentState) -> AgentState:
         except Exception:
             pass
 
+        logger.info(
+            "jd_analyst_node: done [session=%s] title=%r required_skills=%d",
+            session_id,
+            jd_dict.get("job_title"),
+            len(jd_dict.get("required_skills", [])),
+        )
         return {
             **state,
             "jd_parsed": jd_dict,
@@ -77,6 +88,7 @@ def jd_analyst_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"jd_analyst_node error: {traceback.format_exc()}"
+        logger.error("jd_analyst_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,

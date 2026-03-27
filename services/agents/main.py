@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 
 from dotenv import load_dotenv
@@ -114,6 +115,7 @@ class CompanyPreviewRequest(BaseModel):
 @app.post("/company-preview")
 async def company_preview(req: CompanyPreviewRequest):
     """Quick company research from the job description — runs independently of the full pipeline."""
+    _logger.info("company_preview: company=%r jd_len=%d", req.company, len(req.job_description))
     from agents.nodes.company_researcher import company_researcher_node
     state = {
         "job_description": req.job_description,
@@ -126,8 +128,11 @@ async def company_preview(req: CompanyPreviewRequest):
     }
     result = company_researcher_node(state)
     if result.get("error"):
+        _logger.error("company_preview: researcher failed: %s", result["error"][:300])
         raise HTTPException(status_code=500, detail=result["error"])
-    return result.get("company_research") or {}
+    research = result.get("company_research") or {}
+    _logger.info("company_preview: completed company_name=%r", research.get("company_name"))
+    return research
 
 
 @app.post("/coach", response_model=CoachResponse)
@@ -138,6 +143,12 @@ async def coach(req: CoachRequest):
     run. Returns a concise, actionable answer grounded in the candidate's specific
     resume and target job.
     """
+    _logger.info(
+        "coach: question=%r resume_len=%d jd_len=%d",
+        req.question[:120],
+        len(req.resume_text),
+        len(req.job_description),
+    )
     import json as _json
     from agents.tools.gemini import GeminiClient
     from langchain_core.messages import HumanMessage
@@ -162,8 +173,11 @@ async def coach(req: CoachRequest):
 
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
-        return CoachResponse(answer=response.content.strip())
+        answer = response.content.strip()
+        _logger.info("coach: answered successfully answer_len=%d", len(answer))
+        return CoachResponse(answer=answer)
     except Exception as exc:
+        _logger.error("coach: LLM call failed: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Coach failed: {str(exc)}",
@@ -179,6 +193,14 @@ async def analyze(req: AnalyzeRequest):
         cover_letter -> interview_coach -> ats_scorer
     """
     session_id = str(uuid.uuid4())
+    _logger.info(
+        "analyze: starting session=%s user_id=%s resume_len=%d jd_len=%d",
+        session_id,
+        req.user_id,
+        len(req.resume_text),
+        len(req.job_description),
+    )
+    t_start = time.monotonic()
 
     initial_state = {
         "resume_text": req.resume_text,
@@ -203,13 +225,22 @@ async def analyze(req: AnalyzeRequest):
     try:
         result = await graph.ainvoke(initial_state, config={"callbacks": [tracker]})
     except Exception as exc:
+        _logger.error("analyze: pipeline exception [session=%s]: %s", session_id, exc, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Agent pipeline failed: {str(exc)}",
         )
 
+    elapsed = time.monotonic() - t_start
+
     # Propagate any agent-level errors as a 500.
     if result.get("error"):
+        _logger.error(
+            "analyze: agent error [session=%s] after %.1fs: %s",
+            session_id,
+            elapsed,
+            str(result["error"])[:300],
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Agent error: {result['error']}",
@@ -224,6 +255,19 @@ async def analyze(req: AnalyzeRequest):
     ats_score = result.get("ats_score") or {}
     company_research = result.get("company_research") or {}
     match_percentage = float(gap_analysis.get("match_percentage", 0.0))
+
+    _logger.info(
+        "analyze: completed [session=%s] in %.1fs "
+        "match=%.1f%% bullets=%d qa=%d ats=%s tokens=in:%d/out:%d",
+        session_id,
+        elapsed,
+        match_percentage,
+        len(tailored_bullets),
+        len(interview_qa),
+        ats_score.get("score"),
+        tracker.input_tokens,
+        tracker.output_tokens,
+    )
 
     return AnalyzeResponse(
         session_id=session_id,

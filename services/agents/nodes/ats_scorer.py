@@ -1,4 +1,5 @@
 import json
+import logging
 import traceback
 from typing import List
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel, field_validator
 from agents.config import settings
 from agents.state import AgentState
 from agents.tools.structured import invoke_structured
+
+logger = logging.getLogger(__name__)
 
 
 _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
@@ -38,6 +41,8 @@ class ATSScore(BaseModel):
 
 def ats_scorer_node(state: AgentState) -> AgentState:
     """Estimate ATS compatibility and provide keyword + formatting feedback."""
+    session_id = state.get("session_id", "?")
+    logger.info("ats_scorer_node: starting [session=%s]", session_id)
     try:
         resume_text = state.get("resume_text", "")
         jd_parsed = state.get("jd_parsed") or {}
@@ -71,6 +76,13 @@ def ats_scorer_node(state: AgentState) -> AgentState:
         gap_pct = float((state.get("gap_analysis") or {}).get("match_percentage", 0))
         score_dict["score"] = max(0, min(100, round(gap_pct)))
 
+        logger.info(
+            "ats_scorer_node: done [session=%s] score=%d keyword_matches=%d keyword_misses=%d",
+            session_id,
+            score_dict.get("score", 0),
+            len(score_dict.get("keyword_matches", [])),
+            len(score_dict.get("keyword_misses", [])),
+        )
         return {
             **state,
             "ats_score": score_dict,
@@ -79,6 +91,7 @@ def ats_scorer_node(state: AgentState) -> AgentState:
 
     except Exception as exc:
         error_msg = f"ats_scorer_node error: {traceback.format_exc()}"
+        logger.error("ats_scorer_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
         return {
             **state,
             "error": error_msg,
