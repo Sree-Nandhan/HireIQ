@@ -219,6 +219,8 @@ async def analyze(req: AnalyzeRequest):
         "completed_agents": [],
         "messages": [],
         "error": None,
+        "input_tokens": 0,
+        "output_tokens": 0,
     }
 
     tracker = TokenTracker()
@@ -265,8 +267,8 @@ async def analyze(req: AnalyzeRequest):
         len(tailored_bullets),
         len(interview_qa),
         ats_score.get("score"),
-        tracker.input_tokens,
-        tracker.output_tokens,
+        result.get("input_tokens", 0),
+        result.get("output_tokens", 0),
     )
 
     return AnalyzeResponse(
@@ -278,8 +280,8 @@ async def analyze(req: AnalyzeRequest):
         ats_score=ats_score,
         company_research=company_research,
         match_percentage=match_percentage,
-        input_tokens=tracker.input_tokens,
-        output_tokens=tracker.output_tokens,
+        input_tokens=result.get("input_tokens", 0),
+        output_tokens=result.get("output_tokens", 0),
     )
 
 
