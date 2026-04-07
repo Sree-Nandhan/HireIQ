@@ -46,9 +46,9 @@ def jd_analyst_node(state: AgentState) -> AgentState:
     session_id = state.get("session_id", "?")
     logger.info("jd_analyst_node: starting [session=%s] jd_len=%d", session_id, len(state.get("job_description", "")))
     try:
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
+        llm = GeminiClient(temperature=0, json_mode=True)
 
-        jd_text = state['job_description'][:3000]
+        jd_text = state['job_description'][:settings.max_jd_chars]
         prompt = (
             "Extract structured info from this job description.\n\n"
             f"JD:\n{jd_text}\n\n"

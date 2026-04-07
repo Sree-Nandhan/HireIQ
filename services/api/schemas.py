@@ -1,8 +1,9 @@
 import json
+import re
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +27,10 @@ def _parse_json_field(value: Any) -> Any:
 class JobApplicationCreate(BaseModel):
     """Payload for creating a new job application."""
 
-    company: str
-    job_title: str
-    job_description: str
-    resume_text: str
+    company: str = Field(..., min_length=1, max_length=200)
+    job_title: str = Field(..., min_length=1, max_length=200)
+    job_description: str = Field(..., min_length=50, max_length=500_000)
+    resume_text: str = Field(..., min_length=50, max_length=500_000)
 
 
 class JobApplicationResponse(BaseModel):
@@ -157,12 +158,33 @@ class CoachResponse(BaseModel):
 # Auth schemas
 # ---------------------------------------------------------------------------
 
+def _validate_email_format(v: str) -> str:
+    v = v.strip().lower()
+    if "\n" in v or "\r" in v or "\0" in v:
+        raise ValueError("Invalid email address.")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+        raise ValueError("Invalid email format.")
+    return v
+
+
 class UserCreate(BaseModel):
     """Payload for registering a new user."""
     email: str
-    password: str
+    password: str = Field(..., min_length=8)
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return _validate_email_format(v)
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        return v
 
 
 class UserResponse(BaseModel):
@@ -185,6 +207,32 @@ class Token(BaseModel):
 class GoogleAuthRequest(BaseModel):
     """Payload for Google Sign-In — contains the Google ID token credential."""
     credential: str
+
+
+class OTPRequest(BaseModel):
+    """Request an OTP to be sent to the given email address."""
+    email: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return _validate_email_format(v)
+
+
+class OTPVerify(BaseModel):
+    """Verify an OTP and receive a JWT access token."""
+    email: str
+    otp: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return _validate_email_format(v)
+
+
+class ResumeUpdate(BaseModel):
+    """Payload for updating the resume text on an existing application."""
+    resume_text: str = Field(..., min_length=10, max_length=500_000)
 
 
 class AnalyzeRequest(BaseModel):

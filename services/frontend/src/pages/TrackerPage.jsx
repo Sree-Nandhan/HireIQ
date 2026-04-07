@@ -152,7 +152,7 @@ export default function TrackerPage() {
           <h2>Job Applications</h2>
           <p className="tracker-sub">{apps.length} application{apps.length !== 1 ? "s" : ""} tracked</p>
         </div>
-        <Link to="/analyze" className="btn-primary">+ New Analysis</Link>
+        {apps.length > 0 && <Link to="/analyze" className="btn-primary">+ New Analysis</Link>}
       </div>
 
       {/* Inline action error banner */}

@@ -36,5 +36,11 @@ def invoke_structured(llm, prompt: str, model_class: Type[T]) -> T:
 
     response = llm.invoke([HumanMessage(content=prompt)])
     raw = _strip_markdown(response.content)
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"LLM returned invalid JSON for {model_class.__name__}: {exc}\n"
+            f"Raw output (first 300 chars): {raw[:300]}"
+        ) from exc
     return model_class.model_validate(data)

@@ -6,7 +6,6 @@ from typing import List
 from agents.tools.gemini import GeminiClient
 from pydantic import BaseModel, field_validator
 
-from agents.config import settings
 from agents.state import AgentState
 from agents.tools.structured import invoke_structured
 
@@ -33,6 +32,11 @@ class ATSScore(BaseModel):
     formatting_suggestions: List[str] = []
     overall_assessment: str = ""
 
+    @field_validator("score", mode="before")
+    @classmethod
+    def clamp_score(cls, v) -> int:
+        return max(0, min(100, int(v)))
+
     @field_validator("keyword_matches", "keyword_misses", "formatting_suggestions", mode="before")
     @classmethod
     def coerce_lists(cls, v):
@@ -49,7 +53,7 @@ def ats_scorer_node(state: AgentState) -> AgentState:
         resume_parsed = state.get("resume_parsed") or {}
         tailored_bullets = state.get("tailored_bullets") or []
 
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
+        llm = GeminiClient(temperature=0, json_mode=True)
 
         candidate_skills = resume_parsed.get("skills", [])
         jd_keywords = jd_parsed.get("keywords", [])

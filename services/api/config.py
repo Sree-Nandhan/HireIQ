@@ -1,20 +1,48 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+
+
+_INSECURE_DEFAULTS = {"change-me-in-production", "secret", "changeme", ""}
 
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:postgres@db:5432/hireiq"
     agent_service_url: str = "http://agent-service:8001"
-    anthropic_api_key: str = ""
     environment: str = "development"
+    # Allowed CORS origins (comma-separated). Defaults to localhost for dev.
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
     # Google OAuth
     google_client_id: str = ""
     # JWT
-    jwt_secret_key: str = "change-me-in-production"
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    # SMTP / OTP email
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    otp_expire_minutes: int = 10
+    # OTP brute-force protection
+    otp_max_attempts: int = 5
 
     class Config:
         env_file = ".env"
+
+    @field_validator("jwt_secret_key", mode="before")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        if not v or v.strip() in _INSECURE_DEFAULTS or len(v.strip()) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be set to a random string of at least 32 characters. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        return v
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
 settings = Settings()

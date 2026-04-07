@@ -15,9 +15,13 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # OTP-based authentication
+    otp_hash = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0, nullable=False)
 
     applications = relationship("JobApplication", back_populates="user", cascade="all, delete-orphan")
 

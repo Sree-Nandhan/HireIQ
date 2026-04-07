@@ -10,6 +10,7 @@ import types
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+from fastapi.testclient import TestClient
 
 os.environ.setdefault("CHROMA_HOST", "localhost")
 os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")

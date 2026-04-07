@@ -2,10 +2,13 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    google_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    groq_api_key: str = ""
+    groq_model: str = "llama3-8b-8192"
     agent_service_port: int = 8001
     environment: str = "development"
+    # Max chars sent to LLM per field (prevents runaway costs on huge inputs)
+    max_resume_chars: int = 8000
+    max_jd_chars: int = 6000
 
     # LangSmith tracing — set LANGCHAIN_TRACING_V2=true to enable
     langchain_tracing_v2: str = "false"

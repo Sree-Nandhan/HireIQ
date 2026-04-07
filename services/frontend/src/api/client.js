@@ -48,9 +48,9 @@ api.interceptors.response.use(
     if (status === 401) {
       console.warn(`${LOG} 401 received — clearing session`);
       localStorage.removeItem("token");
-      // Avoid redirect loop if already on auth page
+      // Dispatch a custom event so AuthContext can react without a hard page reload
       if (!window.location.pathname.startsWith("/auth")) {
-        window.location.href = "/auth";
+        window.dispatchEvent(new Event("session:expired"));
       }
     }
 

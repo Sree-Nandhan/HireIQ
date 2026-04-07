@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const LOG = "[AuthPage]";
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RESEND_COOLDOWN = 60; // seconds
 
 const FEATURES = [
   { icon: "📊", title: "Gap Analysis",     desc: "See exactly where your skills stand against the job." },
@@ -14,111 +14,138 @@ const FEATURES = [
 ];
 
 export default function AuthPage() {
-  const { login, register } = useAuth();
+  const { requestOtp, verifyOtp } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode]           = useState("login");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName]   = useState("");
-  const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState("");
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [welcome, setWelcome]     = useState("");
+  // "email" step or "otp" step
+  const [step, setStep]       = useState("email");
+  const [email, setEmail]     = useState("");
+  const [emailErr, setEmailErr] = useState("");
 
-  // Field-level validation errors
-  const [fieldErrors, setFieldErrors] = useState({});
-  // Track which fields have been touched (blurred)
-  const [touched, setTouched] = useState({});
+  // OTP digits — 6 separate inputs
+  const [digits, setDigits]   = useState(["", "", "", "", "", ""]);
+  const inputRefs             = useRef([]);
 
-  const validateFields = () => {
-    const errs = {};
-    if (mode === "register") {
-      if (!firstName.trim()) errs.firstName = "First name is required.";
-      if (!lastName.trim())  errs.lastName  = "Last name is required.";
-    }
-    if (!email.trim()) {
-      errs.email = "Email is required.";
-    } else if (!EMAIL_RE.test(email.trim())) {
-      errs.email = "Enter a valid email address.";
-    }
-    if (!password) {
-      errs.password = "Password is required.";
-    } else if (password.length < 8) {
-      errs.password = "Password must be at least 8 characters.";
-    }
-    return errs;
-  };
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
-  const handleBlur = (field) => {
-    setTouched((prev) => ({ ...prev, [field]: true }));
-    const errs = validateFields();
-    setFieldErrors(errs);
-  };
+  // Countdown timer for resend
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
-  const submit = async (e) => {
+  // ── Step 1: request OTP ────────────────────────────────────────────────
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setError("");
-    setWelcome("");
-
-    // Mark all fields as touched so errors are visible
-    setTouched(
-      mode === "register"
-        ? { firstName: true, lastName: true, email: true, password: true }
-        : { email: true, password: true }
-    );
-
-    const errs = validateFields();
-    if (Object.keys(errs).length > 0) {
-      setFieldErrors(errs);
-      console.warn(`${LOG} Submit blocked — validation errors:`, errs);
+    const trimmed = email.trim();
+    if (!EMAIL_RE.test(trimmed)) {
+      setEmailErr("Enter a valid email address.");
       return;
     }
-
+    setEmailErr("");
     setLoading(true);
-    console.log(`${LOG} Submitting ${mode} for:`, email);
     try {
-      if (mode === "login") {
-        await login(email, password);
-        console.log(`${LOG} Login complete — navigating to /tracker`);
-        navigate("/tracker");
-      } else {
-        await register(email, password, firstName, lastName);
-        const name = firstName || email.split("@")[0];
-        setWelcome(`Welcome to HireIQ, ${name}! Your account is ready.`);
-        console.log(`${LOG} Registration complete — navigating in 1.8s`);
-        setTimeout(() => navigate("/tracker"), 1800);
-      }
+      await requestOtp(trimmed);
+      console.log(`${LOG} OTP requested`);
+      setStep("otp");
+      setCooldown(RESEND_COOLDOWN);
+      // Focus first digit box after render
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
     } catch (err) {
-      const msg = err.response?.data?.detail || "Authentication failed. Please try again.";
-      console.error(`${LOG} ${mode} failed:`, msg, err);
+      const msg = err.response?.data?.detail || "Failed to send OTP. Please try again.";
+      console.error(`${LOG} OTP request failed:`, msg);
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const switchMode = () => {
-    const next = mode === "login" ? "register" : "login";
-    console.log(`${LOG} Switching mode to: ${next}`);
-    setMode(next);
+  // ── Step 2: verify OTP ─────────────────────────────────────────────────
+  const handleVerify = async (e, otpOverride) => {
+    e?.preventDefault();
     setError("");
-    setWelcome("");
-    setFieldErrors({});
-    setTouched({});
+    const otp = otpOverride ?? digits.join("");
+    if (otp.length < 6) {
+      setError("Please enter the full 6-digit code.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await verifyOtp(email.trim(), otp);
+      console.log(`${LOG} Signed in — navigating to /tracker`);
+      navigate("/tracker");
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Invalid or expired code. Please try again.";
+      console.error(`${LOG} OTP verify failed:`, msg);
+      setError(msg);
+      setDigits(["", "", "", "", "", ""]);
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const fe = (field) =>
-    touched[field] && fieldErrors[field] ? fieldErrors[field] : null;
+  // ── Digit input handling ───────────────────────────────────────────────
+  const onDigitChange = (idx, val) => {
+    // accept only digits
+    const ch = val.replace(/\D/g, "").slice(-1);
+    const next = [...digits];
+    next[idx] = ch;
+    setDigits(next);
+    setError("");
+    if (ch && idx < 5) inputRefs.current[idx + 1]?.focus();
+    // auto-submit when last digit filled — pass otp directly to avoid stale state
+    if (ch && idx === 5 && next.every(d => d)) {
+      setTimeout(() => handleVerify(null, next.join("")), 0);
+    }
+  };
 
+  const onDigitKeyDown = (idx, e) => {
+    if (e.key === "Backspace" && !digits[idx] && idx > 0) {
+      inputRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const onDigitPaste = (e) => {
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = [...digits];
+    pasted.split("").forEach((ch, i) => { next[i] = ch; });
+    setDigits(next);
+    const focusIdx = Math.min(pasted.length, 5);
+    inputRefs.current[focusIdx]?.focus();
+    if (pasted.length === 6) setTimeout(() => handleVerify(null, pasted), 0);
+  };
+
+  const handleResend = async () => {
+    if (cooldown > 0) return;
+    setError("");
+    setDigits(["", "", "", "", "", ""]);
+    setLoading(true);
+    try {
+      await requestOtp(email.trim());
+      setCooldown(RESEND_COOLDOWN);
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
+    } catch (err) {
+      setError("Failed to resend. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="auth-layout">
-      {/* ── Left panel ── */}
+      {/* Left brand panel */}
       <div className="auth-brand">
         <div className="auth-brand-inner">
           <div className="auth-logo">HireIQ</div>
           <p className="auth-tagline">Your AI-powered career intelligence system.</p>
-
           <ul className="auth-features">
             {FEATURES.map((f) => (
               <li key={f.title}>
@@ -133,97 +160,90 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* ── Right panel ── */}
+      {/* Right form panel */}
       <div className="auth-form-panel">
         <div className="auth-card">
-          <h2>{mode === "login" ? "Welcome back" : "Create account"}</h2>
-          <p className="auth-sub">
-            {mode === "login"
-              ? "Sign in to continue to HireIQ"
-              : "Start analyzing your applications today"}
-          </p>
 
-          <form onSubmit={submit} className="auth-form" noValidate>
-            {mode === "register" && (
-              <div className="auth-row">
+          {step === "email" ? (
+            <>
+              <h2>Sign in to HireIQ</h2>
+              <p className="auth-sub">Enter your email and we'll send you a sign-in code.</p>
+
+              <form onSubmit={handleSendOtp} className="auth-form" noValidate>
                 <div className="auth-field">
-                  <label>First Name</label>
+                  <label>Email</label>
                   <input
-                    type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    onBlur={() => handleBlur("firstName")}
-                    placeholder="Jane"
-                    autoComplete="given-name"
-                    className={fe("firstName") ? "input--invalid" : ""}
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setEmailErr(""); }}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    autoFocus
+                    className={emailErr ? "input--invalid" : ""}
                   />
-                  {fe("firstName") && <span className="field-error">{fe("firstName")}</span>}
+                  {emailErr && <span className="field-error">{emailErr}</span>}
                 </div>
-                <div className="auth-field">
-                  <label>Last Name</label>
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    onBlur={() => handleBlur("lastName")}
-                    placeholder="Smith"
-                    autoComplete="family-name"
-                    className={fe("lastName") ? "input--invalid" : ""}
-                  />
-                  {fe("lastName") && <span className="field-error">{fe("lastName")}</span>}
+
+                {error && <p className="auth-error">{error}</p>}
+
+                <button type="submit" className="auth-submit" disabled={loading}>
+                  {loading ? "Sending…" : "Send sign-in code"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2>Check your email</h2>
+              <p className="auth-sub">
+                We sent a 6-digit code to <strong>{email}</strong>.
+                <br />
+                <button
+                  className="auth-switch-btn"
+                  style={{ marginTop: 4 }}
+                  onClick={() => { setStep("email"); setError(""); setDigits(["","","","","",""]); }}
+                >
+                  Change email
+                </button>
+              </p>
+
+              <form onSubmit={handleVerify} className="auth-form" noValidate>
+                <div className="otp-inputs">
+                  {digits.map((d, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => (inputRefs.current[i] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={d}
+                      onChange={(e) => onDigitChange(i, e.target.value)}
+                      onKeyDown={(e) => onDigitKeyDown(i, e)}
+                      onPaste={onDigitPaste}
+                      className={`otp-digit${error ? " input--invalid" : ""}`}
+                    />
+                  ))}
                 </div>
-              </div>
-            )}
 
-            <div className="auth-field">
-              <label>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => handleBlur("email")}
-                placeholder="you@example.com"
-                autoComplete="email"
-                className={fe("email") ? "input--invalid" : ""}
-              />
-              {fe("email") && <span className="field-error">{fe("email")}</span>}
-            </div>
+                {error && <p className="auth-error">{error}</p>}
 
-            <div className="auth-field">
-              <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onBlur={() => handleBlur("password")}
-                placeholder="••••••••"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                className={fe("password") ? "input--invalid" : ""}
-              />
-              {fe("password") && <span className="field-error">{fe("password")}</span>}
-              {mode === "register" && !fe("password") && password && password.length < 8 && (
-                <span className="field-hint">
-                  {8 - password.length} more character{8 - password.length !== 1 ? "s" : ""} needed
-                </span>
-              )}
-            </div>
+                <button type="submit" className="auth-submit" disabled={loading}>
+                  {loading ? "Verifying…" : "Verify & Sign In"}
+                </button>
+              </form>
 
-            {error   && <p className="auth-error">{error}</p>}
-            {welcome && <p className="auth-welcome">{welcome}</p>}
+              <p className="auth-switch" style={{ marginTop: 16 }}>
+                Didn't receive it?{" "}
+                {cooldown > 0 ? (
+                  <span style={{ color: "var(--muted)" }}>Resend in {cooldown}s</span>
+                ) : (
+                  <button className="auth-switch-btn" onClick={handleResend} disabled={loading}>
+                    Resend code
+                  </button>
+                )}
+              </p>
+            </>
+          )}
 
-            <button type="submit" className="auth-submit" disabled={loading}>
-              {loading
-                ? "Please wait…"
-                : mode === "login" ? "Sign In" : "Create Account"}
-            </button>
-          </form>
-
-          <p className="auth-switch">
-            {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-            <button className="auth-switch-btn" onClick={switchMode}>
-              {mode === "login" ? "Register" : "Sign In"}
-            </button>
-          </p>
         </div>
       </div>
     </div>

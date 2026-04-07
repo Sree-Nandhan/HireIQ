@@ -12,6 +12,7 @@ from api.auth import get_current_user
 from api.config import settings
 from api.database import get_db
 from api.models import AnalysisResult, JobApplication, User
+from fastapi import Query
 from api.schemas import AnalyzeRequest, AnalysisResultResponse
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ async def trigger_analysis(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Agent service error: {exc.response.text}",
+            detail="Agent service returned an error. Please retry later.",
         ) from exc
     except httpx.RequestError as exc:
         logger.error("Could not reach agent service for session=%s: %s", session_id, exc)
@@ -270,7 +271,7 @@ async def trigger_analysis_stream(
 
         except Exception as exc:
             logger.error("Stream proxy error session=%s: %s", session_id, exc)
-            yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'error', 'detail': str(exc)})}\n\n"
+            yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'error', 'detail': 'Pipeline error. Please retry.'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -282,6 +283,8 @@ async def trigger_analysis_stream(
 @router.get("/applications/{application_id}/analyses", response_model=list[AnalysisResultResponse])
 def list_analyses(
     application_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -305,6 +308,8 @@ def list_analyses(
         db.query(AnalysisResult)
         .filter(AnalysisResult.application_id == application_id)
         .order_by(AnalysisResult.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 

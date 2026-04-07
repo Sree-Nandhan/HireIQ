@@ -55,9 +55,9 @@ def resume_parser_node(state: AgentState) -> AgentState:
     session_id = state.get("session_id", "?")
     logger.info("resume_parser_node: starting [session=%s] resume_len=%d", session_id, len(state.get("resume_text", "")))
     try:
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key, json_mode=True)
+        llm = GeminiClient(temperature=0, json_mode=True)
 
-        resume_text = state['resume_text'][:4000]
+        resume_text = state['resume_text'][:settings.max_resume_chars]
         prompt = (
             "Parse this resume. Extract structured info.\n\n"
             f"RESUME:\n{resume_text}\n\n"
@@ -79,8 +79,8 @@ def resume_parser_node(state: AgentState) -> AgentState:
         ids = [f"resume_{session_id}_0"]
         try:
             index_documents(chunks, ids, collection_name="resumes")
-        except Exception:
-            pass
+        except Exception as rag_exc:
+            logger.warning("resume_parser_node: RAG indexing skipped [session=%s]: %s", session_id, rag_exc)
 
         logger.info(
             "resume_parser_node: done [session=%s] name=%r skills=%d",

@@ -9,7 +9,7 @@ import "./index.css";
 function Nav() {
   const { token, user, logout } = useAuth();
   const { pathname } = useLocation();
-  if (!token) return null;
+  if (!token || pathname === "/auth") return null;
   const displayName = user?.first_name || user?.email?.split("@")[0] || "?";
   const initials = displayName.slice(0, 2).toUpperCase();
   return (
@@ -17,7 +17,6 @@ function Nav() {
       <Link to="/tracker" className="brand">HireIQ</Link>
       <div className="nav-links">
         <Link to="/tracker">Tracker</Link>
-        {pathname !== "/analyze" && <Link to="/analyze">New Analysis</Link>}
         <button onClick={logout} className="btn-ghost">Sign Out</button>
         <div className="nav-avatar" title={displayName}>{initials}</div>
       </div>
@@ -32,8 +31,8 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
         <Nav />
         <main className="main-content">
           <Routes>
@@ -44,7 +43,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/tracker" replace />} />
           </Routes>
         </main>
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

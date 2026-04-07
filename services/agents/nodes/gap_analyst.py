@@ -6,7 +6,6 @@ from typing import List
 from langchain_core.messages import HumanMessage
 from agents.tools.gemini import GeminiClient
 
-from agents.config import settings
 from agents.state import AgentState
 from agents.tools.rag import query_collection
 
@@ -152,7 +151,7 @@ def gap_analyst_node(state: AgentState) -> AgentState:
         except Exception:
             pass
 
-        llm = GeminiClient(model=settings.gemini_model, temperature=0, google_api_key=settings.google_api_key)
+        llm = GeminiClient(temperature=0)
 
         summary_prompt = (
             f"The candidate matches {match_pct}% of the job requirements.\n"

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -24,6 +25,7 @@ if settings.langchain_tracing_v2.lower() == "true":
         os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
 
 from agents.graph import build_graph                    # noqa: E402
+from agents.nodes.supervisor import PIPELINE_ORDER      # noqa: E402
 from agents.tools.token_tracker import TokenTracker     # noqa: E402
 
 logging.basicConfig(
@@ -153,7 +155,7 @@ async def coach(req: CoachRequest):
     from agents.tools.gemini import GeminiClient
     from langchain_core.messages import HumanMessage
 
-    llm = GeminiClient(model=settings.gemini_model, temperature=0.5, google_api_key=settings.google_api_key)
+    llm = GeminiClient(temperature=0.5)
 
     system_context = (
         "You are an expert career coach helping a job candidate prepare for their application. "
@@ -225,13 +227,14 @@ async def analyze(req: AnalyzeRequest):
 
     tracker = TokenTracker()
     try:
-        result = await graph.ainvoke(initial_state, config={"callbacks": [tracker]})
+        async with asyncio.timeout(660):  # 11-minute hard ceiling
+            result = await graph.ainvoke(initial_state, config={"callbacks": [tracker]})
+    except asyncio.TimeoutError:
+        _logger.error("analyze: pipeline timed out [session=%s]", session_id)
+        raise HTTPException(status_code=504, detail="Analysis timed out. Please retry.")
     except Exception as exc:
         _logger.error("analyze: pipeline exception [session=%s]: %s", session_id, exc, exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Agent pipeline failed: {str(exc)}",
-        )
+        raise HTTPException(status_code=500, detail="Agent pipeline failed. Please retry.")
 
     elapsed = time.monotonic() - t_start
 
@@ -243,10 +246,7 @@ async def analyze(req: AnalyzeRequest):
             elapsed,
             str(result["error"])[:300],
         )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Agent error: {result['error']}",
-        )
+        raise HTTPException(status_code=500, detail="An agent error occurred. Please retry.")
 
     # Safely extract outputs, falling back to empty structures if an agent
     # did not produce a result (e.g., due to a handled exception).
@@ -289,17 +289,8 @@ async def analyze(req: AnalyzeRequest):
 # SSE streaming endpoint
 # ---------------------------------------------------------------------------
 
-# Agent names in pipeline order — used to label progress events
-_PIPELINE_AGENTS = [
-    "resume_parser",
-    "jd_analyst",
-    "company_researcher",
-    "gap_analyst",
-    "resume_tailor",
-    "cover_letter",
-    "interview_coach",
-    "ats_scorer",
-]
+# Agent names in pipeline order — single source of truth is supervisor.PIPELINE_ORDER
+_PIPELINE_AGENTS = PIPELINE_ORDER
 
 
 @app.post("/analyze/stream")
@@ -340,25 +331,26 @@ async def analyze_stream(req: AnalyzeRequest):
             final_state: dict = {}
             prev_completed: set = set()
 
-            # stream_mode="values" yields the full state after each node completes,
-            # giving real-time progress as each agent finishes its LLM call.
-            async for state_snapshot in graph.astream(initial_state, stream_mode="values"):
-                if not isinstance(state_snapshot, dict):
-                    continue
-                final_state = state_snapshot
+            async with asyncio.timeout(660):
+                # stream_mode="values" yields the full state after each node completes,
+                # giving real-time progress as each agent finishes its LLM call.
+                async for state_snapshot in graph.astream(initial_state, stream_mode="values"):
+                    if not isinstance(state_snapshot, dict):
+                        continue
+                    final_state = state_snapshot
 
-                current_completed = set(state_snapshot.get("completed_agents") or [])
-                for agent_name in (current_completed - prev_completed):
-                    if agent_name in _PIPELINE_AGENTS:
-                        step = _PIPELINE_AGENTS.index(agent_name) + 1
-                        payload = json.dumps({
-                            "agent": agent_name,
-                            "status": "completed",
-                            "step": step,
-                            "total": len(_PIPELINE_AGENTS),
-                        })
-                        yield f"data: {payload}\n\n"
-                prev_completed = current_completed
+                    current_completed = set(state_snapshot.get("completed_agents") or [])
+                    for agent_name in (current_completed - prev_completed):
+                        if agent_name in _PIPELINE_AGENTS:
+                            step = _PIPELINE_AGENTS.index(agent_name) + 1
+                            payload = json.dumps({
+                                "agent": agent_name,
+                                "status": "completed",
+                                "step": step,
+                                "total": len(_PIPELINE_AGENTS),
+                            })
+                            yield f"data: {payload}\n\n"
+                    prev_completed = current_completed
 
             # Emit the final done event with full results so the API service
             # can persist them without a second pipeline call.
@@ -382,9 +374,11 @@ async def analyze_stream(req: AnalyzeRequest):
             })
             yield f"data: {result_payload}\n\n"
 
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'error', 'detail': 'Pipeline timed out.'})}\n\n"
         except Exception as exc:
-            error_payload = json.dumps({"agent": "pipeline", "status": "error", "detail": str(exc)})
-            yield f"data: {error_payload}\n\n"
+            _logger.error("stream: pipeline error [session=%s]: %s", session_id, exc)
+            yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'error', 'detail': 'Pipeline error. Please retry.'})}\n\n"
 
     return StreamingResponse(
         _event_generator(),

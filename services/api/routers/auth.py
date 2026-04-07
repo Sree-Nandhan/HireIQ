@@ -1,6 +1,10 @@
+import hmac
+import hashlib
 import logging
 import secrets
+from datetime import datetime, timedelta, timezone
 
+from asyncio import get_event_loop
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from slowapi import Limiter
@@ -10,8 +14,9 @@ from sqlalchemy.orm import Session
 from api.auth import create_access_token, get_current_user, hash_password, verify_password
 from api.config import settings
 from api.database import get_db
+from api.email_service import send_otp_email
 from api.models import User
-from api.schemas import GoogleAuthRequest, Token, UserCreate, UserResponse
+from api.schemas import GoogleAuthRequest, OTPRequest, OTPVerify, Token, UserCreate, UserResponse
 
 logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -71,6 +76,109 @@ def login(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
 def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's profile."""
     return current_user
+
+
+# ---------------------------------------------------------------------------
+# OTP-based passwordless auth
+# ---------------------------------------------------------------------------
+
+def _hash_otp(otp: str) -> str:
+    """HMAC-SHA256 hash using the JWT secret as the key, preventing rainbow-table precomputation."""
+    return hmac.new(
+        settings.jwt_secret_key.encode(),
+        otp.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+@router.post("/otp/request", status_code=http_status.HTTP_200_OK)
+@limiter.limit("5/minute")
+async def otp_request(request: Request, payload: OTPRequest, db: Session = Depends(get_db)):
+    """
+    Send a 6-digit OTP to the given email address.
+
+    Creates the user account automatically on first use (passwordless sign-up).
+    Always returns 200 so callers can't enumerate registered emails.
+    """
+    email = payload.email.strip().lower()
+
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        user = User(email=email)
+        db.add(user)
+        db.flush()  # get the id without committing yet
+        logger.info("Auto-created OTP user email=%s", email)
+
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+    user.otp_hash = _hash_otp(otp)
+    user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
+    db.commit()
+
+    try:
+        loop = get_event_loop()
+        await loop.run_in_executor(None, send_otp_email, email, otp)
+    except Exception:
+        # Email failure should not expose internals — already logged in email_service
+        raise HTTPException(
+            status_code=http_status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send OTP email. Please try again.",
+        )
+
+    return {"detail": f"OTP sent to {email}"}
+
+
+@router.post("/otp/verify", response_model=Token)
+@limiter.limit("10/minute")
+def otp_verify(request: Request, payload: OTPVerify, db: Session = Depends(get_db)):
+    """
+    Verify the OTP and return a JWT access token.
+
+    Raises **401** for invalid or expired OTPs.
+    """
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    invalid_exc = HTTPException(
+        status_code=http_status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired OTP.",
+    )
+
+    if user is None or user.otp_hash is None or user.otp_expires_at is None:
+        raise invalid_exc
+
+    # Check expiry (otp_expires_at stored as UTC naive datetime)
+    expires = user.otp_expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires:
+        raise invalid_exc
+
+    # Brute-force protection: track failed attempts
+    attempts = (user.otp_attempts or 0) + 1
+    if user.otp_hash != _hash_otp(payload.otp.strip()):
+        user.otp_attempts = attempts
+        if attempts >= settings.otp_max_attempts:
+            # Invalidate OTP after too many failures
+            user.otp_hash = None
+            user.otp_expires_at = None
+            user.otp_attempts = 0
+            db.commit()
+            logger.warning("OTP locked out after %d attempts for email=%s", attempts, email)
+            raise HTTPException(
+                status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many incorrect attempts. Request a new OTP.",
+            )
+        db.commit()
+        raise invalid_exc
+
+    # OTP correct — clear it immediately (one-time use)
+    user.otp_hash = None
+    user.otp_expires_at = None
+    user.otp_attempts = 0
+    db.commit()
+
+    logger.info("OTP verified for user id=%d email=%s", user.id, user.email)
+    return Token(access_token=create_access_token(user.id, user.email))
 
 
 @router.post("/google", response_model=Token)

@@ -12,6 +12,7 @@ from api.schemas import (
     JobApplicationCreate,
     JobApplicationDetail,
     JobApplicationResponse,
+    ResumeUpdate,
     StatusUpdate,
 )
 
@@ -189,13 +190,13 @@ def update_application_status(
 @router.patch("/applications/{application_id}/resume", response_model=JobApplicationResponse)
 def update_resume_text(
     application_id: int,
-    payload: dict,
+    payload: ResumeUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Update the resume text on an existing application (e.g. before re-analyzing)."""
     application = _get_owned_or_404(db, application_id, current_user.id)
-    resume_text = payload.get("resume_text", "").strip()
+    resume_text = payload.resume_text.strip()
     if not resume_text:
         raise HTTPException(status_code=422, detail="resume_text is required.")
     try:

@@ -1,15 +1,17 @@
 import logging
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from api.auth import get_current_user
 from api.config import settings
 from api.database import engine, Base
+from api.models import User
 import api.models  # noqa: F401 — registers all models with Base
 from api.routers import applications, analysis, auth, coach, resume
 
@@ -33,9 +35,10 @@ app = FastAPI(
 
 @app.on_event("startup")
 def create_tables():
+    """Safety net: ensures all model tables exist even if a migration is missed."""
     try:
         Base.metadata.create_all(bind=engine)
-        logging.getLogger(__name__).info("DB tables created/verified")
+        logging.getLogger(__name__).info("DB tables created/verified via create_all")
     except Exception as exc:
         logging.getLogger(__name__).warning("DB create_all failed at startup: %s", exc)
 
@@ -44,10 +47,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Version"],
 )
 
 
@@ -67,12 +70,20 @@ app.include_router(resume.router, prefix="/api/v1")
 
 
 @app.post("/api/v1/company-preview", tags=["analysis"])
-async def company_preview_proxy(request: Request):
+async def company_preview_proxy(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
     """Proxy to agent-service /company-preview for quick company research during analysis."""
     body = await request.json()
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(f"{settings.agent_service_url}/company-preview", json=body)
-        return JSONResponse(content=resp.json(), status_code=resp.status_code)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(f"{settings.agent_service_url}/company-preview", json=body)
+            return JSONResponse(content=resp.json(), status_code=resp.status_code)
+    except httpx.TimeoutException:
+        return JSONResponse(content={"error": "Company research timed out."}, status_code=504)
+    except httpx.RequestError:
+        return JSONResponse(content={"error": "Could not reach agent service."}, status_code=502)
 
 
 @app.get("/health", tags=["health"])
@@ -90,11 +101,19 @@ async def readiness():
     """
     errors: dict[str, str] = {}
 
-    # Check PostgreSQL
+    # Check PostgreSQL (offloaded to thread pool to avoid blocking the event loop)
+    import asyncio
+    from sqlalchemy import text
+
+    async def _check_db():
+        loop = asyncio.get_event_loop()
+        def _ping():
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        await loop.run_in_executor(None, _ping)
+
     try:
-        from api.database import engine
-        with engine.connect() as conn:
-            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        await asyncio.wait_for(_check_db(), timeout=3.0)
     except Exception as exc:
         errors["database"] = str(exc)
 
