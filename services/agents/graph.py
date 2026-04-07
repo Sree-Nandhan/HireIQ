@@ -35,7 +35,7 @@ def build_graph():
     workflow.add_node("company_researcher", company_researcher_node)
     workflow.add_node("gap_analyst", gap_analyst_node)
     workflow.add_node("resume_tailor", resume_tailor_node)
-    workflow.add_node("cover_letter", cover_letter_node)
+    workflow.add_node("cover_letter_writer", cover_letter_node)
     workflow.add_node("interview_coach", interview_coach_node)
     workflow.add_node("ats_scorer", ats_scorer_node)
 
@@ -52,7 +52,7 @@ def build_graph():
             "company_researcher": "company_researcher",
             "gap_analyst": "gap_analyst",
             "resume_tailor": "resume_tailor",
-            "cover_letter": "cover_letter",
+            "cover_letter": "cover_letter_writer",
             "interview_coach": "interview_coach",
             "ats_scorer": "ats_scorer",
             "END": END,
@@ -66,7 +66,7 @@ def build_graph():
         "company_researcher",
         "gap_analyst",
         "resume_tailor",
-        "cover_letter",
+        "cover_letter_writer",
         "interview_coach",
         "ats_scorer",
     ]
