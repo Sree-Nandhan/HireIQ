@@ -66,16 +66,18 @@ def send_otp_email(to_email: str, otp: str) -> None:
     msg.attach(MIMEText(html, "html"))
 
     try:
+        # Use bare email address for SMTP envelope (display name causes issues with some servers)
+        envelope_from = settings.smtp_user
         if settings.smtp_port == 465:
             with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
                 server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(msg["From"], to_email, msg.as_string())
+                server.sendmail(envelope_from, to_email, msg.as_string())
         else:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
                 server.ehlo()
                 server.starttls()
                 server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(msg["From"], to_email, msg.as_string())
+                server.sendmail(envelope_from, to_email, msg.as_string())
         logger.info("OTP email sent to %s", to_email)
     except Exception as exc:
         logger.error("Failed to send OTP email to %s: %s", to_email, exc)
