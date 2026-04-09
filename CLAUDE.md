@@ -1,6 +1,6 @@
 # HireIQ — Multi-Agent Career Intelligence System
 
-LangGraph-powered multi-agent pipeline that analyzes resumes vs job descriptions and generates gap analysis, tailored bullets, cover letters, interview prep, and ATS scoring.
+LangGraph-powered multi-agent pipeline that analyzes resumes vs job descriptions and generates gap analysis, tailored bullets, cover letters, and interview prep.
 
 ---
 
@@ -10,14 +10,6 @@ LangGraph-powered multi-agent pipeline that analyzes resumes vs job descriptions
 
 ```
 [Usage] Input: X tokens | Output: Y tokens | Session total: ~Z tokens
-```
-
-When running multi-agent tasks, report per-agent usage separately. Example:
-
-```
-[Usage] ResumeParser — Input: 1,200 tokens | Output: 340 tokens
-[Usage] GapAnalyst   — Input: 2,100 tokens | Output: 520 tokens
-[Usage] Session total: ~4,160 tokens
 ```
 
 ---
@@ -31,102 +23,107 @@ Services:
 - chromadb          (port 8002) — Vector store for resume/JD embeddings
 - db (PostgreSQL)   (port 5432) — Persistent storage
 
-LangGraph Pipeline (agent-service):
-  Supervisor → ResumeParser → JDAnalyst → GapAnalyst →
-  ResumeTailor → CoverLetter → InterviewCoach → ATSScorer → END
+LangGraph Pipeline (7 nodes):
+  Supervisor → ResumeParser → JDAnalyst → CompanyResearcher →
+  GapAnalyst → ResumeTailor → CoverLetter → InterviewCoach → END
 
-LLM: Claude API (claude-sonnet-4-6) via langchain-anthropic
-Embeddings: HuggingFace all-MiniLM-L6-v2 via langchain-huggingface
-Vector Store: ChromaDB (langchain-chroma)
+LLM: Groq API (llama-3.3-70b-versatile) via GeminiClient wrapper
+Embeddings: HuggingFace all-MiniLM-L6-v2
+Vector Store: ChromaDB
 ```
 
 ---
 
-## Task Board
+## Deployment
 
-### Phase 0 — Completed (Foundation)
+| Service | Platform | URL |
+|---------|----------|-----|
+| Frontend | Vercel | hire-iq-brown.vercel.app |
+| API | Railway (hireiq-api) | hireiq-api-production.up.railway.app |
+| Agents | Railway (hireiq-agents) | internal Railway network |
+| PostgreSQL | Railway (hireiq-db) | internal Railway network |
 
-- [x] Project directory scaffold
-- [x] LangGraph agent pipeline (state, graph, all 7 agent nodes)
-- [x] ChromaDB RAG tool + HF embeddings
-- [x] FastAPI API service with PostgreSQL
-- [x] SQLAlchemy models: JobApplication, AnalysisResult
-- [x] Routers: /api/v1/applications (CRUD), /api/v1/analyze
-- [x] docker-compose.yml (api + agents + chromadb + postgres)
-- [x] Pydantic Settings with .env support
-- [x] CORS middleware on both services
-- [x] Structured logging
-
-### Phase 1 — Pending: Testing
-
-- [ ] TEST-01: pytest setup for both services
-- [ ] TEST-02: Unit tests for all LangGraph node functions (mock LLM)
-- [ ] TEST-03: Integration tests for API CRUD endpoints
-- [ ] TEST-04: End-to-end test for /analyze pipeline
-- [ ] TEST-05: pytest-cov with 80% coverage gate
-
-### Phase 2 — Pending: Authentication
-
-- [ ] AUTH-01: User model (id, email, hashed_password, created_at)
-- [ ] AUTH-02: POST /api/v1/register and POST /api/v1/login → JWT tokens
-- [ ] AUTH-03: JWT middleware (Depends(get_current_user)) on all protected routes
-- [ ] AUTH-04: Scope applications to authenticated user
-
-### Phase 3 — Pending: Enhanced AI
-
-- [ ] AI-01: Stream LangGraph execution events via SSE (Server-Sent Events)
-- [ ] AI-02: Add token/cost tracking per analysis session (log input_tokens, output_tokens to DB)
-- [ ] AI-03: POST /api/v1/coach — conversational follow-up Q&A about the analysis
-- [ ] AI-04: LangSmith tracing integration (LANGCHAIN_TRACING_V2=true)
-- [ ] AI-05: Resume PDF upload support (PyPDF2 extraction)
-
-### Phase 4 — Pending: Frontend
-
-- [ ] FE-01: React + Vite scaffold in services/frontend/
-- [ ] FE-02: Upload resume + paste JD form
-- [ ] FE-03: Real-time progress indicator (SSE stream of agent steps)
-- [ ] FE-04: Results dashboard: gap analysis, tailored bullets, cover letter, interview Q&A, ATS score
-- [ ] FE-05: Job application tracker (kanban or list view)
-- [ ] FE-06: Add frontend to docker-compose (port 3000)
-
-### Phase 5 — Pending: Production Readiness
-
-- [ ] PROD-01: Proper Alembic migrations
-- [ ] PROD-02: Rate limiting (slowapi)
-- [ ] PROD-03: API versioning and deprecation headers
-- [ ] PROD-04: Health check endpoints with DB/ChromaDB connectivity checks
-- [ ] PROD-05: GitHub Actions CI/CD pipeline (lint + test + build)
+**Railway project:** `diligent-integrity`
 
 ---
 
-## Known Issues Log
+## Completed Work
 
-| ID | File | Issue | Status |
-|----|------|-------|--------|
-| —  | —    | No issues yet | — |
+### Auth
+- [x] OTP-based passwordless auth (no email — OTP returned in API response, displayed on screen)
+- [x] JWT tokens, session expiry handling
+- [x] Auto-create user on first OTP request
+
+### Agent Pipeline
+- [x] 7-node LangGraph pipeline (ATS scorer removed — was redundant with gap analysis)
+- [x] Gap analyst: deterministic skill matching with 60+ alias dictionary, weighted match % (required skills 2x weight)
+- [x] Formatting tips folded into gap_analysis output (formatting_tips field)
+- [x] Groq model: `llama-3.3-70b-versatile` (switched from decommissioned gemma2-9b-it)
+- [x] Groq json_mode fix: auto-injects "json" keyword into prompts when required
+- [x] Token tracking across all nodes
+
+### Frontend (React + Vite on Vercel)
+- [x] Auth page with OTP flow, displays OTP on screen
+- [x] Tracker page — job application list
+- [x] Results page — 4 tabs: Gap Analysis, Tailored Bullets, Cover Letter, Interview Q&A
+- [x] Gap Analysis tab: match ring, AI summary, skill chips, partial matches, formatting tips
+- [x] Tailored bullets: editable, copy per bullet, copy all, download
+- [x] Cover letter: copy + download
+- [x] Interview Q&A: questions with model answers
+- [x] ATS Score tab removed (was duplicate of gap analysis)
+- [x] Match % ring removed from header (shown only in Gap Analysis tab)
+- [x] SSE simulated progress bar (7 steps)
+
+### API
+- [x] CRUD: /api/v1/applications
+- [x] POST /api/v1/analyze — blocking analysis
+- [x] POST /api/v1/analyze/stream — SSE streaming
+- [x] GET /api/v1/applications/:id/analyses — history
+- [x] POST /api/v1/coach — LLM follow-up Q&A on analysis
+- [x] GET /health, /health/ready
+
+### Database
+- [x] OTP columns added manually via Railway psql (otp_hash, otp_expires_at, otp_attempts)
+- [x] hashed_password made nullable for OTP-only users
+- [x] ats_score / ats_details columns kept in DB but no longer written to (nullable, no migration needed)
+
+---
+
+## Known Limitations
+
+| Issue | Detail | Fix |
+|-------|--------|-----|
+| Groq free tier TPD | 100k tokens/day — ~3-4 users/day before hitting limit | Upgrade to Groq Dev tier ($9/mo) for 500k TPD |
+| Coach uses LLM | POST /coach fails when Groq TPD exhausted | Same fix as above |
+| No email delivery | OTP shown on screen (Railway blocks SMTP) | Add Resend API key when ready |
 
 ---
 
 ## Dev Guidelines
 
-- **Running the stack:** `docker-compose up --build`
 - Never hard-code credentials — use `.env`
 - All new endpoints need Pydantic request + response models
-- LLM calls must go through LangChain abstractions (not raw httpx to Claude API)
-- Use `from api.config import settings` / `from agents.config import settings` for env vars
+- LLM calls go through `GeminiClient` in `services/agents/tools/gemini.py` (Groq backend)
 - Agent nodes must catch exceptions and set `state["error"]` without crashing the graph
+- Groq requires the word "json" in the prompt when using json_mode — handled automatically in GeminiClient.invoke()
+- `create_all()` only creates missing tables, never adds columns — use psql for column additions
 
 ---
 
-## Environment Variables Required
+## Environment Variables
 
-Create a `.env` file at the project root with the following variables:
+### Railway — hireiq-api
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET_KEY` | JWT signing secret |
+| `AGENT_SERVICE_URL` | Internal URL of hireiq-agents |
+| `GOOGLE_CLIENT_ID` | Optional — Google OAuth |
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key for LLM calls |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `AGENT_SERVICE_URL` | Yes | URL of the agent-service (e.g. http://agent-service:8001) |
-| `CHROMA_HOST` | Yes | ChromaDB host (e.g. chromadb) |
-| `LANGCHAIN_TRACING_V2` | Optional | Set to `true` to enable LangSmith tracing |
-| `LANGCHAIN_API_KEY` | Optional | Required if LANGCHAIN_TRACING_V2 is true |
+### Railway — hireiq-agents
+| Variable | Description |
+|----------|-------------|
+| `GROQ_API_KEY` | Groq API key |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `CHROMA_HOST` | ChromaDB host |
