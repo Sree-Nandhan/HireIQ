@@ -105,7 +105,7 @@ export default function ResultsPage() {
         if (res.data.analyses?.length > 0) {
           const latest = res.data.analyses[res.data.analyses.length - 1];
           setAnalysis(latest);
-          console.log(`${LOG} Loaded analysis id=${latest.id}, ats_score=${latest.ats_score}, match=${latest.match_percentage}%`);
+          console.log(`${LOG} Loaded analysis id=${latest.id}, match=${latest.match_percentage}%`);
         } else {
           console.warn(`${LOG} No analyses found for application id=${id}`);
         }
@@ -175,7 +175,7 @@ export default function ResultsPage() {
       if (res.data.analyses?.length > 0) {
         const latest = res.data.analyses[res.data.analyses.length - 1];
         setAnalysis(latest);
-        console.log(`${LOG} Re-analysis saved: ats_score=${latest.ats_score}`);
+        console.log(`${LOG} Re-analysis saved: match=${latest.match_percentage}%`);
       }
     } catch (err) {
       console.error(`${LOG} Re-analysis failed:`, err.response?.data?.detail || err.message, err);
