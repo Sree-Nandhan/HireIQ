@@ -101,24 +101,31 @@ async def otp_request(request: Request, payload: OTPRequest, db: Session = Depen
     Always returns 200 so callers can't enumerate registered emails.
     """
     email = payload.email.strip().lower()
+    logger.info("OTP_REQUEST: received for email=%s", email)
 
     user = db.query(User).filter(User.email == email).first()
     if user is None:
         user = User(email=email)
         db.add(user)
-        db.flush()  # get the id without committing yet
-        logger.info("Auto-created OTP user email=%s", email)
+        db.flush()
+        logger.info("OTP_REQUEST: auto-created new user email=%s id=%s", email, user.id)
+    else:
+        logger.info("OTP_REQUEST: existing user email=%s id=%s", email, user.id)
 
     otp = f"{secrets.randbelow(1_000_000):06d}"
     user.otp_hash = _hash_otp(otp)
     user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.otp_expire_minutes)
     db.commit()
+    logger.info("OTP_REQUEST: OTP generated and saved to DB for email=%s expires=%s", email, user.otp_expires_at)
 
     try:
+        logger.info("OTP_REQUEST: attempting to send email via SMTP host=%s port=%s user=%s",
+                    settings.smtp_host, settings.smtp_port, settings.smtp_user)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, send_otp_email, email, otp)
-    except Exception:
-        # Email failure should not expose internals — already logged in email_service
+        logger.info("OTP_REQUEST: email sent successfully to=%s", email)
+    except Exception as exc:
+        logger.error("OTP_REQUEST: email send FAILED for=%s error=%r type=%s", email, exc, type(exc).__name__, exc_info=True)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
             detail="Failed to send OTP email. Please try again.",

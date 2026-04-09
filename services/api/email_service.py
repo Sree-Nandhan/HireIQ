@@ -66,19 +66,24 @@ def send_otp_email(to_email: str, otp: str) -> None:
     msg.attach(MIMEText(html, "html"))
 
     try:
-        # Use bare email address for SMTP envelope (display name causes issues with some servers)
         envelope_from = settings.smtp_user
+        logger.info("SMTP: connecting to %s:%s (SSL=%s) from=%s to=%s",
+                    settings.smtp_host, settings.smtp_port, settings.smtp_port == 465, envelope_from, to_email)
         if settings.smtp_port == 465:
             with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
+                logger.info("SMTP: connected via SSL, logging in as %s", settings.smtp_user)
                 server.login(settings.smtp_user, settings.smtp_password)
+                logger.info("SMTP: login OK, sending...")
                 server.sendmail(envelope_from, to_email, msg.as_string())
         else:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+                logger.info("SMTP: connected via STARTTLS, sending ehlo...")
                 server.ehlo()
                 server.starttls()
                 server.login(settings.smtp_user, settings.smtp_password)
+                logger.info("SMTP: login OK, sending...")
                 server.sendmail(envelope_from, to_email, msg.as_string())
-        logger.info("OTP email sent to %s", to_email)
+        logger.info("SMTP: email sent successfully to %s", to_email)
     except Exception as exc:
-        logger.error("Failed to send OTP email to %s: %s", to_email, exc)
+        logger.error("SMTP: FAILED to=%s error=%r type=%s", to_email, exc, type(exc).__name__, exc_info=True)
         raise
