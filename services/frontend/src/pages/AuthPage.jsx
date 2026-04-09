@@ -29,6 +29,7 @@ export default function AuthPage() {
   const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [displayOtp, setDisplayOtp] = useState("");
 
   // Countdown timer for resend
   useEffect(() => {
@@ -49,11 +50,11 @@ export default function AuthPage() {
     setEmailErr("");
     setLoading(true);
     try {
-      await requestOtp(trimmed);
+      const otp = await requestOtp(trimmed);
       console.log(`${LOG} OTP requested`);
+      if (otp) setDisplayOtp(otp);
       setStep("otp");
       setCooldown(RESEND_COOLDOWN);
-      // Focus first digit box after render
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
     } catch (err) {
       const msg = err.response?.data?.detail || "Failed to send OTP. Please try again.";
@@ -128,7 +129,8 @@ export default function AuthPage() {
     setDigits(["", "", "", "", "", ""]);
     setLoading(true);
     try {
-      await requestOtp(email.trim());
+      const otp = await requestOtp(email.trim());
+      if (otp) setDisplayOtp(otp);
       setCooldown(RESEND_COOLDOWN);
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
     } catch (err) {
@@ -193,9 +195,9 @@ export default function AuthPage() {
             </>
           ) : (
             <>
-              <h2>Check your email</h2>
+              <h2>Your sign-in code</h2>
               <p className="auth-sub">
-                We sent a 6-digit code to <strong>{email}</strong>.
+                Enter the code below to sign in as <strong>{email}</strong>.
                 <br />
                 <button
                   className="auth-switch-btn"
@@ -205,6 +207,22 @@ export default function AuthPage() {
                   Change email
                 </button>
               </p>
+
+              {displayOtp && (
+                <div style={{
+                  background: "rgba(99,102,241,0.12)",
+                  border: "1px solid rgba(99,102,241,0.4)",
+                  borderRadius: 10,
+                  padding: "14px 20px",
+                  marginBottom: 20,
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Your sign-in code</div>
+                  <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: 10, color: "var(--text)" }}>
+                    {displayOtp}
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleVerify} className="auth-form" noValidate>
                 <div className="otp-inputs">

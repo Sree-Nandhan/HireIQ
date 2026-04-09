@@ -118,20 +118,8 @@ async def otp_request(request: Request, payload: OTPRequest, db: Session = Depen
     db.commit()
     logger.info("OTP_REQUEST: OTP generated and saved to DB for email=%s expires=%s", email, user.otp_expires_at)
 
-    try:
-        logger.info("OTP_REQUEST: attempting to send email via SMTP host=%s port=%s user=%s",
-                    settings.smtp_host, settings.smtp_port, settings.smtp_user)
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, send_otp_email, email, otp)
-        logger.info("OTP_REQUEST: email sent successfully to=%s", email)
-    except Exception as exc:
-        logger.error("OTP_REQUEST: email send FAILED for=%s error=%r type=%s", email, exc, type(exc).__name__, exc_info=True)
-        raise HTTPException(
-            status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to send OTP email. Please try again.",
-        )
-
-    return {"detail": f"OTP sent to {email}"}
+    logger.info("OTP_REQUEST: OTP ready for email=%s (screen delivery mode)", email)
+    return {"detail": f"OTP sent to {email}", "otp": otp}
 
 
 @router.post("/otp/verify", response_model=Token)
