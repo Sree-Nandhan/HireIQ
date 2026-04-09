@@ -102,7 +102,14 @@ async def coach(
                 json=agent_payload,
             )
             response.raise_for_status()
-            data = response.json()
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                logger.error("Coach service returned non-JSON response for app_id=%d", application.id)
+                raise HTTPException(
+                    status_code=http_status.HTTP_502_BAD_GATEWAY,
+                    detail="Coach service returned an invalid response.",
+                )
     except httpx.TimeoutException as exc:
         logger.error("Coach service timed out for app_id=%d: %s", application.id, exc)
         raise HTTPException(
@@ -133,4 +140,4 @@ async def coach(
         current_user.id,
         len(data.get("answer", "")),
     )
-    return CoachResponse(answer=data["answer"])
+    return CoachResponse(answer=data.get("answer", ""))

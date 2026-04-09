@@ -83,6 +83,7 @@ export default function ResultsPage() {
   const [error, setError]       = useState("");
   const [reanalyzing, setReanalyzing]     = useState(false);
   const [reanalyzeDone, setReanalyzeDone] = useState(false);
+  const [reanalyzeError, setReanalyzeError] = useState("");
   const { currentStep, progress } = useSimulatedProgress(reanalyzing, reanalyzeDone);
   const [reanalyzeModal, setReanalyzeModal] = useState(false);
   const [newResumeFile, setNewResumeFile]   = useState(null);
@@ -181,6 +182,7 @@ export default function ResultsPage() {
       }
     } catch (err) {
       console.error(`${LOG} Re-analysis failed:`, err.response?.data?.detail || err.message, err);
+      setReanalyzeError(err.response?.data?.detail || "Re-analysis failed. Please try again.");
     } finally {
       setReanalyzing(false);
       setReanalyzeDone(false);
@@ -237,7 +239,7 @@ export default function ResultsPage() {
           <div className="rp-header-actions">
             <button
               className="rp-btn-reanalyze"
-              onClick={() => setReanalyzeModal(true)}
+              onClick={() => { setReanalyzeError(""); setReanalyzeModal(true); }}
               disabled={reanalyzing}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -245,6 +247,9 @@ export default function ResultsPage() {
               </svg>
               {reanalyzing ? "Re-analyzing…" : "Re-analyze"}
             </button>
+            {reanalyzeError && (
+              <div className="error" style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>{reanalyzeError}</div>
+            )}
           </div>
         </div>
       </div>

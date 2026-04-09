@@ -6,7 +6,21 @@ const LOG = "[AuthContext]";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(localStorage.getItem("token"));
+  const storedToken = localStorage.getItem("token");
+  let initialToken = null;
+  if (storedToken) {
+    try {
+      const payload = JSON.parse(atob(storedToken.split(".")[1]));
+      if (payload.exp * 1000 > Date.now()) {
+        initialToken = storedToken;
+      } else {
+        localStorage.removeItem("token");
+      }
+    } catch {
+      localStorage.removeItem("token");
+    }
+  }
+  const [token, setToken] = useState(initialToken);
   const [user, setUser]   = useState(null);
   const navigate = useNavigate();
 

@@ -1,10 +1,10 @@
+import asyncio
 import hmac
 import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from asyncio import get_event_loop
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from slowapi import Limiter
@@ -61,7 +61,7 @@ def login(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
     Raises **401** for invalid credentials.
     """
     user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
@@ -115,7 +115,7 @@ async def otp_request(request: Request, payload: OTPRequest, db: Session = Depen
     db.commit()
 
     try:
-        loop = get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, send_otp_email, email, otp)
     except Exception:
         # Email failure should not expose internals — already logged in email_service
@@ -146,7 +146,9 @@ def otp_verify(request: Request, payload: OTPVerify, db: Session = Depends(get_d
     if user is None or user.otp_hash is None or user.otp_expires_at is None:
         raise invalid_exc
 
-    # Check expiry (otp_expires_at stored as UTC naive datetime)
+    # Check expiry. otp_expires_at is stored as UTC but PostgreSQL strips tzinfo on
+    # retrieval, yielding a naive datetime. We know it was stored as UTC, so we
+    # safely reattach UTC tzinfo before comparing with the aware datetime.now().
     expires = user.otp_expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)

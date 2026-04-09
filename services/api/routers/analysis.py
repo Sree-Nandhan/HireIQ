@@ -1,7 +1,7 @@
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -143,7 +143,7 @@ async def trigger_analysis(
         output_tokens=agent_data.get("output_tokens", 0),
         interview_qa=_to_json_str(agent_data.get("interview_qa")),
         company_research=_to_json_str(agent_data.get("company_research")),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(analysis)
 
@@ -234,36 +234,42 @@ async def trigger_analysis_stream(
 
                                 if event.get("status") == "done":
                                     result = event.get("result") or {}
-                                    ats_raw = result.get("ats_score")
-                                    ats_int = ats_raw.get("score") if isinstance(ats_raw, dict) else ats_raw
-
-                                    analysis = AnalysisResult(
-                                        application_id=application.id,
-                                        session_id=session_id,
-                                        ats_score=ats_int,
-                                        ats_details=_to_json_str(result.get("ats_score")),
-                                        match_percentage=event.get("match_percentage"),
-                                        gap_analysis=_to_json_str(result.get("gap_analysis")),
-                                        tailored_bullets=_to_json_str(result.get("tailored_bullets")),
-                                        cover_letter=result.get("cover_letter"),
-                                        input_tokens=result.get("input_tokens", 0),
-                                        output_tokens=result.get("output_tokens", 0),
-                                        interview_qa=_to_json_str(result.get("interview_qa")),
-                                        company_research=_to_json_str(result.get("company_research")),
-                                        created_at=datetime.utcnow(),
-                                    )
-                                    db.add(analysis)
-                                    application.status = "analyzed"
-                                    try:
-                                        db.commit()
-                                        db.refresh(analysis)
-                                        logger.info(
-                                            "Stream analysis saved: id=%d session=%s match=%.1f%%",
-                                            analysis.id, session_id, analysis.match_percentage or 0.0,
+                                    if not isinstance(result, dict) or not result:
+                                        logger.warning(
+                                            "Stream done event has empty/invalid result for session=%s — skipping DB insert",
+                                            session_id,
                                         )
-                                    except Exception as db_exc:
-                                        db.rollback()
-                                        logger.error("Failed to save stream analysis: %s", db_exc)
+                                    else:
+                                        ats_raw = result.get("ats_score")
+                                        ats_int = ats_raw.get("score") if isinstance(ats_raw, dict) else ats_raw
+
+                                        analysis = AnalysisResult(
+                                            application_id=application.id,
+                                            session_id=session_id,
+                                            ats_score=ats_int,
+                                            ats_details=_to_json_str(result.get("ats_score")),
+                                            match_percentage=result.get("match_percentage"),
+                                            gap_analysis=_to_json_str(result.get("gap_analysis")),
+                                            tailored_bullets=_to_json_str(result.get("tailored_bullets")),
+                                            cover_letter=result.get("cover_letter"),
+                                            input_tokens=result.get("input_tokens", 0),
+                                            output_tokens=result.get("output_tokens", 0),
+                                            interview_qa=_to_json_str(result.get("interview_qa")),
+                                            company_research=_to_json_str(result.get("company_research")),
+                                            created_at=datetime.now(timezone.utc),
+                                        )
+                                        db.add(analysis)
+                                        application.status = "analyzed"
+                                        try:
+                                            db.commit()
+                                            db.refresh(analysis)
+                                            logger.info(
+                                                "Stream analysis saved: id=%d session=%s match=%.1f%%",
+                                                analysis.id, session_id, analysis.match_percentage or 0.0,
+                                            )
+                                        except Exception as db_exc:
+                                            db.rollback()
+                                            logger.error("Failed to save stream analysis: %s", db_exc)
 
                                     yield f"data: {json.dumps({'agent': 'pipeline', 'status': 'saved', 'application_id': application.id})}\n\n"
                                 else:

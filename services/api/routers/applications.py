@@ -198,7 +198,7 @@ def update_resume_text(
     application = _get_owned_or_404(db, application_id, current_user.id)
     resume_text = payload.resume_text.strip()
     if not resume_text:
-        raise HTTPException(status_code=422, detail="resume_text is required.")
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="resume_text is required.")
     try:
         application.resume_text = resume_text
         db.commit()
@@ -206,7 +206,7 @@ def update_resume_text(
     except Exception as exc:
         db.rollback()
         logger.exception("Failed to update resume for application id=%d: %s", application_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to update resume.") from exc
+        raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update resume.") from exc
     logger.info("Updated resume text for application id=%d (%d chars)", application_id, len(resume_text))
     return JobApplicationResponse(**_enrich_response(application))
 

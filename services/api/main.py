@@ -75,11 +75,18 @@ async def company_preview_proxy(
     current_user: User = Depends(get_current_user),
 ):
     """Proxy to agent-service /company-preview for quick company research during analysis."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"error": "Invalid JSON in request body."}, status_code=400)
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(f"{settings.agent_service_url}/company-preview", json=body)
-            return JSONResponse(content=resp.json(), status_code=resp.status_code)
+            try:
+                content = resp.json()
+            except Exception:
+                content = {"error": "Invalid response from agent service."}
+            return JSONResponse(content=content, status_code=resp.status_code)
     except httpx.TimeoutException:
         return JSONResponse(content={"error": "Company research timed out."}, status_code=504)
     except httpx.RequestError:
@@ -106,7 +113,7 @@ async def readiness():
     from sqlalchemy import text
 
     async def _check_db():
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _ping():
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))

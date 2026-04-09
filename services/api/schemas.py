@@ -87,7 +87,7 @@ class AnalysisResultResponse(BaseModel):
     @classmethod
     def parse_ats_details(cls, v: Any) -> Optional[dict]:
         parsed = _parse_json_field(v)
-        return parsed if isinstance(parsed, dict) else parsed
+        return parsed if isinstance(parsed, dict) else None
 
     @field_validator("gap_analysis", mode="before")
     @classmethod

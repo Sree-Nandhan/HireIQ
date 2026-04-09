@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -17,7 +17,7 @@ class User(Base):
     last_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     # OTP-based authentication
     otp_hash = Column(String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
@@ -39,8 +39,8 @@ class JobApplication(Base):
     resume_text = Column(Text, nullable=False)
     # Lifecycle: pending → analyzed → applied → rejected | offered
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     analyses = relationship("AnalysisResult", back_populates="application", cascade="all, delete-orphan")
     user = relationship("User", back_populates="applications")
@@ -64,6 +64,6 @@ class AnalysisResult(Base):
     company_research = Column(Text)   # stored as JSON string
     input_tokens = Column(Integer, default=0)
     output_tokens = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     application = relationship("JobApplication", back_populates="analyses")

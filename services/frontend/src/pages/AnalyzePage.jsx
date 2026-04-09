@@ -111,6 +111,11 @@ export default function AnalyzePage() {
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const MAX_MB = 5;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`PDF must be under ${MAX_MB} MB.`);
+      return;
+    }
     console.log(`${LOG} PDF selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
     setResumeFile(file);
     setPdfFailed(false);
@@ -222,7 +227,13 @@ export default function AnalyzePage() {
       } catch (sseErr) {
         // Fallback to blocking call if SSE fails
         console.warn(`${LOG} SSE failed, falling back to blocking call:`, sseErr.message);
-        await api.post("/analyze", { application_id: appId });
+        try {
+          await api.post("/analyze", { application_id: appId });
+        } catch (fallbackErr) {
+          setError("Analysis failed. Please try again.");
+          setStep("form");
+          return;
+        }
       }
       console.log(`${LOG} Analysis pipeline completed for app id=${appId}`);
       setCurrentStep(AGENT_STEPS.length);
