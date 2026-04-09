@@ -232,7 +232,6 @@ export default function ResultsPage() {
         </div>
 
         <div className="rp-header-right">
-          {matchPct !== null && <MatchRing pct={matchPct} size={88} stroke={6} />}
           <div className="rp-header-actions">
             <button
               className="rp-btn-reanalyze"
