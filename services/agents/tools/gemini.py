@@ -50,6 +50,10 @@ class GeminiClient:
     def invoke(self, messages) -> _Response:
         prompt = messages[0].content if hasattr(messages[0], "content") else str(messages[0])
 
+        # Groq requires the word "json" in the prompt when using json_object response_format
+        if self._json_mode and "json" not in prompt.lower():
+            prompt = prompt + "\n\nRespond with valid JSON only."
+
         kwargs: dict = {
             "model": self._model,
             "temperature": self._temperature,
