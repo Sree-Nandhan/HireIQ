@@ -193,8 +193,12 @@ def gap_analyst_node(state: AgentState) -> AgentState:
     except Exception as exc:
         error_msg = f"gap_analyst_node error: {traceback.format_exc()}"
         logger.error("gap_analyst_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
+        _in = getattr(llm, 'input_tokens', 0) if 'llm' in locals() else 0
+        _out = getattr(llm, 'output_tokens', 0) if 'llm' in locals() else 0
         return {
             **state,
             "error": error_msg,
             "completed_agents": state.get("completed_agents", []) + ["gap_analyst"],
+            "input_tokens": state.get("input_tokens", 0) + _in,
+            "output_tokens": state.get("output_tokens", 0) + _out,
         }

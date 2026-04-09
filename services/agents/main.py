@@ -26,7 +26,6 @@ if settings.langchain_tracing_v2.lower() == "true":
 
 from agents.graph import build_graph                    # noqa: E402
 from agents.nodes.supervisor import PIPELINE_ORDER      # noqa: E402
-from agents.tools.token_tracker import TokenTracker     # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -225,10 +224,9 @@ async def analyze(req: AnalyzeRequest):
         "output_tokens": 0,
     }
 
-    tracker = TokenTracker()
     try:
         async with asyncio.timeout(660):  # 11-minute hard ceiling
-            result = await graph.ainvoke(initial_state, config={"callbacks": [tracker]})
+            result = await graph.ainvoke(initial_state)
     except asyncio.TimeoutError:
         _logger.error("analyze: pipeline timed out [session=%s]", session_id)
         raise HTTPException(status_code=504, detail="Analysis timed out. Please retry.")

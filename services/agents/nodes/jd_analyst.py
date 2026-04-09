@@ -71,8 +71,8 @@ def jd_analyst_node(state: AgentState) -> AgentState:
         ids = [f"jd_{session_id}_0"]
         try:
             index_documents(chunks, ids, collection_name="job_descriptions")
-        except Exception:
-            pass
+        except Exception as rag_exc:
+            logger.warning("jd_analyst_node: RAG indexing skipped [session=%s]: %s", session_id, rag_exc)
 
         logger.info(
             "jd_analyst_node: done [session=%s] title=%r required_skills=%d",
@@ -91,8 +91,12 @@ def jd_analyst_node(state: AgentState) -> AgentState:
     except Exception as exc:
         error_msg = f"jd_analyst_node error: {traceback.format_exc()}"
         logger.error("jd_analyst_node: FAILED [session=%s]: %s", session_id, exc, exc_info=True)
+        _in = getattr(llm, 'input_tokens', 0) if 'llm' in locals() else 0
+        _out = getattr(llm, 'output_tokens', 0) if 'llm' in locals() else 0
         return {
             **state,
             "error": error_msg,
             "completed_agents": state.get("completed_agents", []) + ["jd_analyst"],
+            "input_tokens": state.get("input_tokens", 0) + _in,
+            "output_tokens": state.get("output_tokens", 0) + _out,
         }
