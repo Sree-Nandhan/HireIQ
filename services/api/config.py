@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
-    # SMTP / OTP email
+    # Resend API (preferred — SMTP is blocked by most cloud providers)
+    resend_api_key: str = ""
+    resend_from: str = "HireIQ <onboarding@resend.dev>"
+    # SMTP / OTP email (fallback when resend_api_key is not set)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""

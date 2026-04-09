@@ -1,8 +1,8 @@
 """
-Sends OTP emails via SMTP.
+Sends OTP emails via Resend API (preferred) or SMTP fallback.
 
-Falls back to logging the OTP to the console when SMTP is not configured —
-useful for local dev / demos where you can see it in `docker logs`.
+Railway and most cloud providers block outbound SMTP ports (465/587).
+Resend uses HTTPS (port 443) which is always allowed.
 """
 import logging
 import smtplib
@@ -30,20 +30,6 @@ def send_otp_email(to_email: str, otp: str) -> None:
     """
     to_email = _sanitize_email(to_email)
 
-    if not settings.smtp_user:
-        logger.warning(
-            "SMTP not configured — OTP for %s is: %s  (expires in %d min)",
-            to_email,
-            otp,
-            settings.otp_expire_minutes,
-        )
-        return
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Your HireIQ sign-in code"
-    msg["From"] = settings.smtp_from or settings.smtp_user
-    msg["To"] = to_email
-
     plain = (
         f"Your HireIQ sign-in code is: {otp}\n\n"
         f"This code expires in {settings.otp_expire_minutes} minutes and can only be used once."
@@ -62,6 +48,37 @@ def send_otp_email(to_email: str, otp: str) -> None:
     </div>
     """
 
+    # --- Resend (preferred: uses HTTPS, works on all cloud providers) ---
+    if settings.resend_api_key:
+        try:
+            import resend
+            resend.api_key = settings.resend_api_key
+            logger.info("RESEND: sending to=%s from=%s", to_email, settings.resend_from)
+            resend.Emails.send({
+                "from": settings.resend_from,
+                "to": [to_email],
+                "subject": "Your HireIQ sign-in code",
+                "html": html,
+                "text": plain,
+            })
+            logger.info("RESEND: email sent successfully to=%s", to_email)
+            return
+        except Exception as exc:
+            logger.error("RESEND: FAILED to=%s error=%r", to_email, exc, exc_info=True)
+            raise
+
+    # --- SMTP fallback (dev/local only — blocked by most cloud providers) ---
+    if not settings.smtp_user:
+        logger.warning(
+            "No email provider configured — OTP for %s is: %s (expires in %d min)",
+            to_email, otp, settings.otp_expire_minutes,
+        )
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Your HireIQ sign-in code"
+    msg["From"] = settings.smtp_from or settings.smtp_user
+    msg["To"] = to_email
     msg.attach(MIMEText(plain, "plain"))
     msg.attach(MIMEText(html, "html"))
 
@@ -71,17 +88,13 @@ def send_otp_email(to_email: str, otp: str) -> None:
                     settings.smtp_host, settings.smtp_port, settings.smtp_port == 465, envelope_from, to_email)
         if settings.smtp_port == 465:
             with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
-                logger.info("SMTP: connected via SSL, logging in as %s", settings.smtp_user)
                 server.login(settings.smtp_user, settings.smtp_password)
-                logger.info("SMTP: login OK, sending...")
                 server.sendmail(envelope_from, to_email, msg.as_string())
         else:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                logger.info("SMTP: connected via STARTTLS, sending ehlo...")
                 server.ehlo()
                 server.starttls()
                 server.login(settings.smtp_user, settings.smtp_password)
-                logger.info("SMTP: login OK, sending...")
                 server.sendmail(envelope_from, to_email, msg.as_string())
         logger.info("SMTP: email sent successfully to %s", to_email)
     except Exception as exc:
