@@ -8,7 +8,6 @@ export const AGENT_STEPS = [
   { key: "resume_tailor",      label: "Tailoring resume bullets",   icon: "✏️"  },
   { key: "cover_letter",       label: "Writing cover letter",       icon: "✉️"  },
   { key: "interview_coach",    label: "Preparing interview Q&A",    icon: "🎯" },
-  { key: "ats_scorer",         label: "Scoring ATS compatibility",  icon: "⚡" },
 ];
 
 // How long to simulate each step before the real response arrives.

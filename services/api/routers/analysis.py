@@ -126,15 +126,9 @@ async def trigger_analysis(
         ) from exc
 
     # 3. Persist the analysis result ---------------------------------------------
-    # ats_score from the agent is a dict {"score": int, ...}; the DB column is Integer.
-    ats_score_raw = agent_data.get("ats_score")
-    ats_score_int = ats_score_raw.get("score") if isinstance(ats_score_raw, dict) else ats_score_raw
-
     analysis = AnalysisResult(
         application_id=application.id,
         session_id=session_id,
-        ats_score=ats_score_int,
-        ats_details=_to_json_str(agent_data.get("ats_score")),
         match_percentage=agent_data.get("match_percentage"),
         gap_analysis=_to_json_str(agent_data.get("gap_analysis")),
         tailored_bullets=_to_json_str(agent_data.get("tailored_bullets")),
@@ -163,10 +157,9 @@ async def trigger_analysis(
         ) from exc
 
     logger.info(
-        "Analysis saved: id=%d session=%s ats_score=%s match=%.1f%% tokens=in:%d/out:%d",
+        "Analysis saved: id=%d session=%s match=%.1f%% tokens=in:%d/out:%d",
         analysis.id,
         session_id,
-        analysis.ats_score,
         analysis.match_percentage or 0.0,
         analysis.input_tokens or 0,
         analysis.output_tokens or 0,
@@ -240,14 +233,9 @@ async def trigger_analysis_stream(
                                             session_id,
                                         )
                                     else:
-                                        ats_raw = result.get("ats_score")
-                                        ats_int = ats_raw.get("score") if isinstance(ats_raw, dict) else ats_raw
-
                                         analysis = AnalysisResult(
                                             application_id=application.id,
                                             session_id=session_id,
-                                            ats_score=ats_int,
-                                            ats_details=_to_json_str(result.get("ats_score")),
                                             match_percentage=result.get("match_percentage"),
                                             gap_analysis=_to_json_str(result.get("gap_analysis")),
                                             tailored_bullets=_to_json_str(result.get("tailored_bullets")),

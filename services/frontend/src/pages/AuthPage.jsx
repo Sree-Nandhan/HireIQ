@@ -10,7 +10,7 @@ const FEATURES = [
   { icon: "📊", title: "Gap Analysis",     desc: "See exactly where your skills stand against the job." },
   { icon: "✏️",  title: "Tailored Bullets", desc: "AI rewrites your resume bullets to match the JD."    },
   { icon: "✉️",  title: "Cover Letter",     desc: "Personalized cover letter generated in seconds."     },
-  { icon: "⚡", title: "ATS Scoring",      desc: "Know your chances before you hit apply."              },
+  { icon: "🎤", title: "Interview Prep",   desc: "Likely questions with model answers, tailored to the JD." },
 ];
 
 export default function AuthPage() {

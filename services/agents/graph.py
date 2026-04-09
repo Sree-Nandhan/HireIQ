@@ -9,9 +9,6 @@ from agents.nodes.gap_analyst import gap_analyst_node
 from agents.nodes.resume_tailor import resume_tailor_node
 from agents.nodes.cover_letter import cover_letter_node
 from agents.nodes.interview_coach import interview_coach_node
-from agents.nodes.ats_scorer import ats_scorer_node
-
-
 def build_graph():
     """Construct and compile the HireIQ LangGraph StateGraph.
 
@@ -37,7 +34,6 @@ def build_graph():
     workflow.add_node("resume_tailor", resume_tailor_node)
     workflow.add_node("cover_letter_writer", cover_letter_node)
     workflow.add_node("interview_coach", interview_coach_node)
-    workflow.add_node("ats_scorer", ats_scorer_node)
 
     # The supervisor is always the entry point.
     workflow.set_entry_point("supervisor")
@@ -54,7 +50,6 @@ def build_graph():
             "resume_tailor": "resume_tailor",
             "cover_letter": "cover_letter_writer",
             "interview_coach": "interview_coach",
-            "ats_scorer": "ats_scorer",
             "END": END,
         },
     )
@@ -68,7 +63,6 @@ def build_graph():
         "resume_tailor",
         "cover_letter_writer",
         "interview_coach",
-        "ats_scorer",
     ]
     for node in agent_nodes:
         workflow.add_edge(node, "supervisor")

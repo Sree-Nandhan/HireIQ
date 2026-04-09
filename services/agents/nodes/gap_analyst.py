@@ -1,7 +1,7 @@
 import logging
 import re
 import traceback
-from typing import List
+from typing import List, Tuple
 
 from langchain_core.messages import HumanMessage
 from agents.tools.gemini import GeminiClient
@@ -139,6 +139,23 @@ def _skill_match(skill: str, resume_text: str, resume_skills: List[str]) -> str:
     return "miss"
 
 
+_FORMAT_CHECKS: List[Tuple[str, str]] = [
+    (r"\|",                  "Pipe characters may confuse ATS parsers — use plain text instead of tables"),
+    (r"\t{2,}",              "Multiple tabs detected — use single spaces for alignment"),
+    (r"[^\x00-\x7F]{3,}",   "Non-ASCII characters may not parse correctly in some ATS systems"),
+]
+
+
+def _formatting_tips(resume_text: str) -> List[str]:
+    tips = []
+    for pattern, tip in _FORMAT_CHECKS:
+        if re.search(pattern, resume_text):
+            tips.append(tip)
+    if not tips:
+        tips.append("Resume formatting looks clean — no major ATS red flags detected.")
+    return tips
+
+
 def gap_analyst_node(state: AgentState) -> AgentState:
     """Perform a gap analysis between the parsed resume and the parsed JD."""
     session_id = state.get("session_id", "?")
@@ -238,6 +255,7 @@ def gap_analyst_node(state: AgentState) -> AgentState:
                 "partial_matches": partial_matches,
                 "match_percentage": match_pct,
                 "summary": summary,
+                "formatting_tips": _formatting_tips(resume_text),
             },
             "completed_agents": state.get("completed_agents", []) + ["gap_analyst"],
             "input_tokens": state.get("input_tokens", 0) + llm.input_tokens,

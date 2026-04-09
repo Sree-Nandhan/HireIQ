@@ -10,7 +10,6 @@ const TABS = [
   { label: "Tailored Bullets", icon: "✏️"  },
   { label: "Cover Letter",     icon: "✉️"  },
   { label: "Interview Q&A",   icon: "🎤" },
-  { label: "ATS Score",        icon: "⚡" },
 ];
 
 /* ── Tiny reusable copy button ─────────────────────────────── */
@@ -138,8 +137,6 @@ export default function ResultsPage() {
   const gap      = analysis.gap_analysis    || {};
   const bullets  = (analysis.tailored_bullets || []).filter(b => b.tailored?.trim());
   const qa       = analysis.interview_qa    || [];
-  const ats      = analysis.ats_details     || {};
-  const atsScore = analysis.ats_score ?? ats.score ?? null;
   const matchPct = gap.match_percentage ?? null;
 
   /* handlers ── unchanged logic, same as before */
@@ -335,6 +332,21 @@ export default function ResultsPage() {
                 </div>
               )}
             </div>
+
+            {/* Formatting tips */}
+            {(gap.formatting_tips || []).length > 0 && (
+              <div className="rp-tips">
+                <div className="rp-tips-header">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  Resume Formatting
+                </div>
+                <ol className="rp-tips-list">
+                  {gap.formatting_tips.map((tip, i) => <li key={i}>{tip}</li>)}
+                </ol>
+              </div>
+            )}
           </div>
         )}
 
@@ -475,98 +487,6 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* ── ATS SCORE ── */}
-        {tab === 4 && (
-          <div className="rp-ats">
-            {/* Score hero */}
-            <div className="rp-ats-hero">
-              <div className="rp-ats-score-wrap">
-                <div className="rp-ats-score-num" style={{
-                  color: atsScore >= 65 ? "#10b981" : atsScore >= 40 ? "#f59e0b" : "#f87171"
-                }}>
-                  {atsScore ?? "--"}
-                </div>
-                <div className="rp-ats-score-denom">/100</div>
-                <div className="rp-ats-score-label">ATS Score</div>
-              </div>
-              <div className="rp-ats-bar-wrap">
-                <div className="rp-ats-bar-track">
-                  <div
-                    className="rp-ats-bar-fill"
-                    style={{
-                      width: `${atsScore ?? 0}%`,
-                      background: atsScore >= 65 ? "linear-gradient(90deg,#059669,#10b981)"
-                               : atsScore >= 40 ? "linear-gradient(90deg,#d97706,#f59e0b)"
-                               : "linear-gradient(90deg,#dc2626,#f87171)"
-                    }}
-                  />
-                </div>
-                {ats.overall_assessment && (
-                  <p className="rp-ats-assessment">{ats.overall_assessment}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Keywords grid */}
-            <div className="rp-skills-grid">
-              {(ats.keyword_matches || []).length > 0 && (
-                <div className="rp-skills-col">
-                  <div className="rp-skills-col-header rp-skills-col-header--match">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    Keyword Matches
-                    <span className="rp-skills-count">{ats.keyword_matches.length}</span>
-                  </div>
-                  <div className="rp-chips-wrap">
-                    {ats.keyword_matches.map(k => <Chip key={k} label={k} variant="match" />)}
-                  </div>
-                </div>
-              )}
-              {(ats.keyword_misses || []).length > 0 && (
-                <div className="rp-skills-col">
-                  <div className="rp-skills-col-header rp-skills-col-header--miss">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                    Missing Keywords
-                    <span className="rp-skills-count">{ats.keyword_misses.length}</span>
-                  </div>
-                  <div className="rp-chips-wrap">
-                    {ats.keyword_misses.map(k => <Chip key={k} label={k} variant="miss" />)}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Formatting tips */}
-            {(ats.formatting_suggestions || []).length > 0 && (
-              <div className="rp-tips">
-                <div className="rp-tips-header">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                  Formatting Tips
-                </div>
-                <ol className="rp-tips-list">
-                  {ats.formatting_suggestions.map((tip, i) => (
-                    <li key={i}>{tip}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {/* Token usage */}
-            {analysis.input_tokens != null && (
-              <div className="rp-token-row">
-                <span>Tokens used</span>
-                <span className="rp-token-val">in {analysis.input_tokens.toLocaleString()}</span>
-                <span className="rp-token-sep">·</span>
-                <span className="rp-token-val">out {analysis.output_tokens.toLocaleString()}</span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ══ RE-ANALYZE OVERLAY ══════════════════════════════ */}

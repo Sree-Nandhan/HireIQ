@@ -203,7 +203,6 @@ export default function TrackerPage() {
               { icon: "✏️",  title: "Tailored Bullets",  desc: "Your resume bullets rewritten to match the JD."       },
               { icon: "✉️",  title: "Cover Letter",      desc: "A personalised cover letter in seconds."              },
               { icon: "🎤", title: "Interview Prep",    desc: "Likely questions with model answers for your resume." },
-              { icon: "⚡", title: "ATS Score",         desc: "Know your chances before you hit apply."              },
             ].map((f) => (
               <div key={f.title} className="welcome-feat">
                 <span className="welcome-feat-icon">{f.icon}</span>

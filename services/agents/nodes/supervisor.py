@@ -13,7 +13,6 @@ PIPELINE_ORDER = [
     "resume_tailor",
     "cover_letter",
     "interview_coach",
-    "ats_scorer",
 ]
 
 

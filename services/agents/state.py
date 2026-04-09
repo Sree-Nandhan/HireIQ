@@ -17,7 +17,7 @@ class AgentState(TypedDict):
     tailored_bullets: Optional[list]    # rewritten resume bullets
     cover_letter: Optional[str]         # generated cover letter
     interview_qa: Optional[list]        # Q&A pairs
-    ats_score: Optional[dict]           # score + suggestions
+    # ats_score removed — formatting tips now live inside gap_analysis
 
     # Routing / control
     next_agent: str                     # supervisor routing field
