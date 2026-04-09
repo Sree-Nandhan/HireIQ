@@ -16,15 +16,56 @@ _NULL_TOKENS = {"null", "none", "n/a", "na", "-", ""}
 
 # Maps JD skill buzzwords → synonyms/equivalents that appear on real resumes.
 _SKILL_ALIASES: dict[str, List[str]] = {
+    # Web / API
     "backend development":   ["software engineering", "server side", "backend", "api development", "web development"],
     "backend engineer":      ["software engineer", "backend", "server side"],
-    "rest apis":             ["restful", "rest api", "http api", "web api", "api integration", "api"],
-    "rest api":              ["restful", "http api", "web api", "api"],
+    "rest apis":             ["restful", "rest api", "http api", "web api", "api integration", "api", "fastapi", "flask", "django"],
+    "rest api":              ["restful", "http api", "web api", "api", "fastapi"],
     "webhooks":              ["webhook", "event driven", "callback", "event-driven"],
     "oauth":                 ["oauth2", "authentication", "auth", "authorization"],
     "typescript":            ["ts", "javascript", "js"],
+    "microservices":         ["microservice", "service oriented", "soa", "distributed", "docker", "kubernetes", "api"],
+    "api development":       ["fastapi", "flask", "django", "rest", "restful", "api", "endpoint"],
+    "fastapi":               ["fast api", "python api", "rest api", "api"],
+
+    # AI / ML
     "openai api":            ["openai", "gpt", "chatgpt", "llm api", "language model api"],
     "anthropic api":         ["anthropic", "claude"],
+    "prompt engineering":    ["prompt", "llm", "system prompt", "few shot", "chain of thought"],
+    "rag":                   ["retrieval augmented", "langchain", "vector", "embeddings", "chromadb", "retrieval"],
+    "rag architectures":     ["retrieval augmented", "langchain", "vector database", "embeddings", "chromadb", "rag"],
+    "llms":                  ["large language model", "llm", "gpt", "claude", "gemini", "hugging face", "transformers"],
+    "llm":                   ["large language model", "gpt", "claude", "gemini", "hugging face", "transformers"],
+    "large language models": ["llm", "gpt", "claude", "gemini", "hugging face", "transformers"],
+    "llm orchestration":     ["langchain", "langgraph", "llm", "agent", "chain"],
+    "agentic frameworks":    ["langchain", "langgraph", "agent", "crewai", "autogen", "agentic"],
+    "langchain":             ["lang chain", "llm framework", "langchain", "agent"],
+    "langgraph":             ["lang graph", "graph agent", "langgraph"],
+    "generative ai":         ["genai", "gen ai", "llm", "gpt", "diffusion", "generative", "large language"],
+    "gen ai":                ["generative ai", "llm", "gpt", "large language model"],
+    "machine learning":      ["ml", "sklearn", "scikit", "xgboost", "pytorch", "tensorflow", "model"],
+    "deep learning":         ["neural network", "cnn", "rnn", "transformer", "pytorch", "tensorflow", "keras"],
+    "nlp":                   ["natural language", "text", "spacy", "nltk", "transformers", "language model"],
+    "mlops":                 ["model deployment", "model serving", "ml pipeline", "kubeflow", "mlflow", "model ops"],
+    "vector databases":      ["chromadb", "pinecone", "weaviate", "faiss", "vector store", "embeddings"],
+    "model context protocol": ["mcp", "model context", "tool protocol"],
+    "mcp":                   ["model context protocol", "tool use", "function calling"],
+
+    # Cloud / Infrastructure
+    "cloud":                 ["aws", "gcp", "azure", "cloud provider", "cloud native"],
+    "cloud-native":          ["aws", "gcp", "azure", "docker", "kubernetes", "microservices"],
+    "aws":                   ["amazon web services", "sagemaker", "ec2", "s3", "lambda", "bedrock"],
+    "gcp":                   ["google cloud", "google cloud platform", "bigquery", "vertex"],
+    "azure":                 ["microsoft azure", "azure ml"],
+    "docker":                ["container", "containerize", "dockerfile", "docker compose"],
+    "kubernetes":            ["k8s", "container orchestration", "helm", "kubectl"],
+    "ci/cd":                 ["continuous integration", "continuous deployment", "github actions", "jenkins", "cicd"],
+    "ci cd":                 ["continuous integration", "continuous deployment", "github actions", "jenkins"],
+    "serverless":            ["lambda", "cloud functions", "faas", "serverless framework"],
+    "cloud infrastructure":  ["aws", "gcp", "azure", "cloud", "docker", "kubernetes"],
+    "service deployment":    ["deployment", "deploy", "docker", "kubernetes", "ci cd", "production"],
+
+    # Voice / Audio
     "stt":                   ["speech to text", "speech recognition", "asr", "whisper"],
     "tts":                   ["text to speech", "speech synthesis", "elevenlabs"],
     "voice ai":              ["conversational ai", "voice assistant", "speech", "vapi", "retell"],
@@ -34,15 +75,19 @@ _SKILL_ALIASES: dict[str, List[str]] = {
     "real time audio":       ["audio processing", "real time", "streaming", "latency"],
     "latency management":    ["real time", "low latency", "performance", "optimization"],
     "barge in handling":     ["interruption", "real time", "audio pipeline"],
-    "prompt engineering":    ["prompt", "llm", "system prompt", "few shot", "chain of thought"],
-    "rag":                   ["retrieval augmented", "langchain", "vector", "embeddings", "chromadb"],
-    "llms":                  ["large language model", "llm", "gpt", "claude", "gemini", "hugging face"],
-    "llm orchestration":     ["langchain", "langgraph", "llm", "agent", "chain"],
+
+    # Data
+    "sql":                   ["postgresql", "mysql", "sqlite", "postgres", "database", "query", "relational"],
+    "nosql":                 ["mongodb", "dynamodb", "cassandra", "redis", "non-relational"],
+    "etl":                   ["data pipeline", "data engineering", "airflow", "spark", "pyspark"],
+    "data engineering":      ["etl", "pipeline", "spark", "pyspark", "airflow", "data pipeline"],
+
+    # General / Soft
     "api documentation":     ["api", "rest", "documentation", "swagger", "openapi"],
-    "cloud infrastructure":  ["aws", "gcp", "azure", "cloud", "docker", "kubernetes"],
-    "service deployment":    ["deployment", "deploy", "docker", "kubernetes", "ci cd", "production"],
     "full stack":            ["frontend", "backend", "software engineer", "full-stack"],
     "crm integration":       ["crm", "api integration", "salesforce", "hubspot", "integration"],
+    "problem solving":       ["analytical", "debugging", "troubleshooting", "critical thinking"],
+    "communication":         ["stakeholder", "presentation", "documentation", "collaboration"],
 }
 
 
@@ -133,10 +178,19 @@ def gap_analyst_node(state: AgentState) -> AgentState:
             else:
                 missing_skills.append(skill)
 
-        # --- Deterministic match percentage ---
-        total = len(all_jd_skills)
-        if total > 0:
-            match_pct = round((len(matching_skills) + 0.5 * len(partial_matches)) / total * 100, 1)
+        # --- Weighted match percentage ---
+        # Required skills count 2x more than nice-to-haves for a more accurate picture.
+        req_set = set(s.lower() for s in jd_required)
+
+        def _weight(skill: str) -> float:
+            return 2.0 if skill.lower() in req_set else 1.0
+
+        total_weight = sum(_weight(s) for s in all_jd_skills)
+        match_weight = sum(_weight(s) for s in matching_skills)
+        partial_weight = sum(_weight(s) * 0.5 for s in partial_matches)
+
+        if total_weight > 0:
+            match_pct = round((match_weight + partial_weight) / total_weight * 100, 1)
         else:
             match_pct = 0.0
 
