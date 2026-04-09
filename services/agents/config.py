@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     groq_api_key: str = ""
-    groq_model: str = "gemma2-9b-it"
+    groq_model: str = "llama-3.3-70b-versatile"
     agent_service_port: int = 8001
     environment: str = "development"
     # Max chars sent to LLM per field (prevents runaway costs on huge inputs)
