@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     otp_expire_minutes: int = 10
     # OTP brute-force protection
     otp_max_attempts: int = 5
+    # Rate limiting
+    max_analyses_per_user_per_day: int = 3
+    daily_token_budget: int = 90000
+    max_coach_messages_per_user_per_day: int = 5
 
     class Config:
         env_file = ".env"

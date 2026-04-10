@@ -67,3 +67,13 @@ class AnalysisResult(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     application = relationship("JobApplication", back_populates="analyses")
+
+
+class CoachLog(Base):
+    """Tracks per-user coach (LLM follow-up) calls for rate limiting."""
+
+    __tablename__ = "coach_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

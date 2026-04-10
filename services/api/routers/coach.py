@@ -10,6 +10,7 @@ from api.auth import get_current_user
 from api.config import settings
 from api.database import get_db
 from api.models import AnalysisResult, JobApplication, User
+from api.rate_limit import check_user_coach_limit, log_coach_call
 from api.schemas import CoachRequest, CoachResponse
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,9 @@ async def coach(
     Raises **404** if the application does not exist or has no analysis yet.
     Raises **502** if the agent service is unreachable.
     """
+    # Rate limit check (before any LLM work) ---------------------------------------
+    check_user_coach_limit(current_user.id, db)
+
     application = (
         db.query(JobApplication)
         .filter(
@@ -140,4 +144,5 @@ async def coach(
         current_user.id,
         len(data.get("answer", "")),
     )
+    log_coach_call(current_user.id, db)
     return CoachResponse(answer=data.get("answer", ""))

@@ -12,6 +12,7 @@ from api.auth import get_current_user
 from api.config import settings
 from api.database import get_db
 from api.models import AnalysisResult, JobApplication, User
+from api.rate_limit import check_user_analysis_limit, check_global_token_budget
 from fastapi import Query
 from api.schemas import AnalyzeRequest, AnalysisResultResponse
 
@@ -58,6 +59,10 @@ async def trigger_analysis(
     - **502** if the agent service returns an error or is unreachable.
     - **500** for unexpected database errors.
     """
+    # 0. Rate limit checks (before any LLM work) ------------------------------------
+    check_user_analysis_limit(current_user.id, db)
+    check_global_token_budget(db)
+
     # 1. Retrieve the application (must belong to the authenticated user) ----------
     application = (
         db.query(JobApplication)
@@ -181,6 +186,10 @@ async def trigger_analysis_stream(
     Final event:     {"agent": "pipeline", "status": "saved", "application_id": N}
     Error event:     {"agent": "pipeline", "status": "error", "detail": "..."}
     """
+    # Rate limit checks (before any LLM work) --------------------------------------
+    check_user_analysis_limit(current_user.id, db)
+    check_global_token_budget(db)
+
     application = (
         db.query(JobApplication)
         .filter(
