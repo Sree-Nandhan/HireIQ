@@ -29,8 +29,8 @@ def _coerce_list(v):
 
 
 class ParsedResume(BaseModel):
-    name: str
-    email: str
+    name: Optional[str] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     skills: List[str]
     experience: List[dict] = []

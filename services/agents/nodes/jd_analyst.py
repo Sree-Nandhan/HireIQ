@@ -27,7 +27,7 @@ def _coerce_list(v):
 
 
 class ParsedJD(BaseModel):
-    job_title: str
+    job_title: Optional[str] = None
     company: Optional[str] = None
     required_skills: List[str] = []
     nice_to_have_skills: List[str] = []
