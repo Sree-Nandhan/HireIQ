@@ -17,12 +17,11 @@ class Settings(BaseSettings):
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
-    # Mailjet (free, no CC, no domain DNS required — preferred for OTP email)
-    mailjet_api_key: str = ""
-    mailjet_secret_key: str = ""
-    mailjet_from_email: str = ""   # sender email you verified in Mailjet dashboard
-    mailjet_from_name: str = "HireIQ"
-    # Resend API (alternative — SMTP is blocked by most cloud providers)
+    # Brevo (free 300/day, no CC, no domain DNS — verify one sender email only)
+    brevo_api_key: str = ""
+    brevo_from_email: str = ""   # sender email you verified in Brevo dashboard
+    brevo_from_name: str = "HireIQ"
+    # Resend API (alternative — requires verified domain for sending to arbitrary users)
     resend_api_key: str = ""
     resend_from: str = "HireIQ <onboarding@resend.dev>"
     # SMTP / OTP email (fallback when no API key is set)
