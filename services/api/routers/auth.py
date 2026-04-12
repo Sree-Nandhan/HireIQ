@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from api.auth import create_access_token, get_current_user, hash_password, verify_password
 from api.config import settings
 from api.database import get_db
-from api.email_service import send_otp_email
 from api.models import User
 from api.schemas import GoogleAuthRequest, OTPRequest, OTPVerify, Token, UserCreate, UserResponse
 
@@ -118,8 +117,16 @@ async def otp_request(request: Request, payload: OTPRequest, db: Session = Depen
     db.commit()
     logger.info("OTP_REQUEST: OTP generated and saved to DB for email=%s expires=%s", email, user.otp_expires_at)
 
-    logger.info("OTP_REQUEST: OTP ready for email=%s (screen delivery mode)", email)
-    return {"detail": f"OTP sent to {email}", "otp": otp}
+    try:
+        from api.email_service import send_otp_email
+        send_otp_email(email, otp)
+        logger.info("OTP_REQUEST: email dispatched for email=%s", email)
+        # Don't return the OTP in the response when email delivery is active
+        return {"detail": f"OTP sent to {email}"}
+    except Exception as exc:
+        logger.error("OTP_REQUEST: email delivery failed for email=%s error=%r", email, exc)
+        # Fall back to screen delivery so auth isn't completely broken
+        return {"detail": f"OTP sent to {email}", "otp": otp}
 
 
 @router.post("/otp/verify", response_model=Token)

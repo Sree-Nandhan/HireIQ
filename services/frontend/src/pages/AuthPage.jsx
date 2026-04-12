@@ -195,9 +195,9 @@ export default function AuthPage() {
             </>
           ) : (
             <>
-              <h2>Your sign-in code</h2>
+              <h2>Check your email</h2>
               <p className="auth-sub">
-                Enter the code below to sign in as <strong>{email}</strong>.
+                We sent a 6-digit code to <strong>{email}</strong>. Enter it below to sign in.
                 <br />
                 <button
                   className="auth-switch-btn"
