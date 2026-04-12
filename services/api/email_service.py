@@ -1,8 +1,11 @@
 """
-Sends OTP emails via Resend API (preferred) or SMTP fallback.
+Sends OTP emails.
 
-Railway and most cloud providers block outbound SMTP ports (465/587).
-Resend uses HTTPS (port 443) which is always allowed.
+Priority order:
+  1. Mailjet  — free (6k/month), no CC, no domain DNS, REST API over HTTPS
+  2. Resend   — fallback if RESEND_API_KEY is set
+  3. SMTP     — local dev only (Railway blocks ports 465/587)
+  4. Log only — dev fallback when nothing is configured
 """
 import logging
 import smtplib
@@ -22,81 +25,113 @@ def _sanitize_email(to_email: str) -> str:
     return to_email.strip()
 
 
-def send_otp_email(to_email: str, otp: str) -> None:
-    """Send a sign-in OTP to *to_email*.
-
-    If SMTP is not configured (smtp_user is empty), the OTP is printed to the
-    server log so development / demo flows still work without email credentials.
-    """
-    to_email = _sanitize_email(to_email)
-
-    plain = (
-        f"Your HireIQ sign-in code is: {otp}\n\n"
-        f"This code expires in {settings.otp_expire_minutes} minutes and can only be used once."
-    )
-    html = f"""
+def _build_html(otp: str) -> str:
+    return f"""
     <div style="font-family:sans-serif;max-width:480px;margin:40px auto;padding:32px;
-                border:1px solid #e5e7eb;border-radius:12px">
-      <h2 style="color:#6366f1;margin-top:0">HireIQ</h2>
-      <p style="color:#374151">Use the code below to sign in to your account:</p>
-      <div style="font-size:40px;font-weight:700;letter-spacing:10px;
-                  color:#1e1e2e;padding:24px 0;text-align:center">{otp}</div>
-      <p style="color:#6b7280;font-size:14px">
-        This code expires in <strong>{settings.otp_expire_minutes} minutes</strong>
-        and can only be used once. If you didn't request this, you can safely ignore it.
+                background:#0f172a;border:1px solid #1e3a5f;border-radius:12px">
+      <h2 style="color:#38bdf8;margin-top:0;letter-spacing:-0.02em">HireIQ</h2>
+      <p style="color:#94a3b8">Use the code below to sign in to your account:</p>
+      <div style="font-size:44px;font-weight:800;letter-spacing:12px;
+                  color:#f1f5f9;padding:28px 0;text-align:center;
+                  background:#1e293b;border-radius:8px;margin:20px 0">{otp}</div>
+      <p style="color:#64748b;font-size:14px;line-height:1.6">
+        This code expires in <strong style="color:#94a3b8">{settings.otp_expire_minutes} minutes</strong>
+        and can only be used once.<br>
+        If you didn't request this, you can safely ignore it.
       </p>
     </div>
     """
 
-    # --- Resend (preferred: uses HTTPS, works on all cloud providers) ---
+
+def _build_plain(otp: str) -> str:
+    return (
+        f"Your HireIQ sign-in code is: {otp}\n\n"
+        f"This code expires in {settings.otp_expire_minutes} minutes and can only be used once.\n"
+        "If you didn't request this, you can safely ignore it."
+    )
+
+
+def send_otp_email(to_email: str, otp: str) -> None:
+    to_email = _sanitize_email(to_email)
+    html  = _build_html(otp)
+    plain = _build_plain(otp)
+
+    # ── 1. Mailjet (preferred: free, no CC, REST/HTTPS) ──────────────────────
+    if settings.mailjet_api_key and settings.mailjet_secret_key:
+        try:
+            from mailjet_rest import Client as MailjetClient
+            mj = MailjetClient(
+                auth=(settings.mailjet_api_key, settings.mailjet_secret_key),
+                version="v3.1",
+            )
+            result = mj.send.create(data={
+                "Messages": [{
+                    "From": {
+                        "Email": settings.mailjet_from_email,
+                        "Name":  settings.mailjet_from_name,
+                    },
+                    "To": [{"Email": to_email}],
+                    "Subject": "Your HireIQ sign-in code",
+                    "HTMLPart": html,
+                    "TextPart": plain,
+                }]
+            })
+            if result.status_code == 200:
+                logger.info("MAILJET: email sent to=%s", to_email)
+                return
+            logger.error("MAILJET: unexpected status %d for to=%s body=%s",
+                         result.status_code, to_email, result.json())
+            raise RuntimeError(f"Mailjet returned {result.status_code}")
+        except Exception as exc:
+            logger.error("MAILJET: FAILED to=%s error=%r", to_email, exc, exc_info=True)
+            raise
+
+    # ── 2. Resend (alternative HTTPS provider) ────────────────────────────────
     if settings.resend_api_key:
         try:
             import resend
             resend.api_key = settings.resend_api_key
-            logger.info("RESEND: sending to=%s from=%s", to_email, settings.resend_from)
             resend.Emails.send({
-                "from": settings.resend_from,
-                "to": [to_email],
+                "from":    settings.resend_from,
+                "to":      [to_email],
                 "subject": "Your HireIQ sign-in code",
-                "html": html,
-                "text": plain,
+                "html":    html,
+                "text":    plain,
             })
-            logger.info("RESEND: email sent successfully to=%s", to_email)
+            logger.info("RESEND: email sent to=%s", to_email)
             return
         except Exception as exc:
             logger.error("RESEND: FAILED to=%s error=%r", to_email, exc, exc_info=True)
             raise
 
-    # --- SMTP fallback (dev/local only — blocked by most cloud providers) ---
-    if not settings.smtp_user:
-        logger.warning(
-            "No email provider configured — OTP for %s is: %s (expires in %d min)",
-            to_email, otp, settings.otp_expire_minutes,
-        )
-        return
+    # ── 3. SMTP (local dev only — blocked by Railway/most cloud hosts) ────────
+    if settings.smtp_user:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your HireIQ sign-in code"
+        msg["From"]    = settings.smtp_from or settings.smtp_user
+        msg["To"]      = to_email
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html,  "html"))
+        try:
+            if settings.smtp_port == 465:
+                with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as s:
+                    s.login(settings.smtp_user, settings.smtp_password)
+                    s.sendmail(settings.smtp_user, to_email, msg.as_string())
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    s.ehlo(); s.starttls()
+                    s.login(settings.smtp_user, settings.smtp_password)
+                    s.sendmail(settings.smtp_user, to_email, msg.as_string())
+            logger.info("SMTP: email sent to=%s", to_email)
+            return
+        except Exception as exc:
+            logger.error("SMTP: FAILED to=%s error=%r", to_email, exc, exc_info=True)
+            raise
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Your HireIQ sign-in code"
-    msg["From"] = settings.smtp_from or settings.smtp_user
-    msg["To"] = to_email
-    msg.attach(MIMEText(plain, "plain"))
-    msg.attach(MIMEText(html, "html"))
-
-    try:
-        envelope_from = settings.smtp_user
-        logger.info("SMTP: connecting to %s:%s (SSL=%s) from=%s to=%s",
-                    settings.smtp_host, settings.smtp_port, settings.smtp_port == 465, envelope_from, to_email)
-        if settings.smtp_port == 465:
-            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(envelope_from, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.ehlo()
-                server.starttls()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(envelope_from, to_email, msg.as_string())
-        logger.info("SMTP: email sent successfully to %s", to_email)
-    except Exception as exc:
-        logger.error("SMTP: FAILED to=%s error=%r type=%s", to_email, exc, type(exc).__name__, exc_info=True)
-        raise
+    # ── 4. No provider configured — log the OTP so dev flows still work ───────
+    logger.warning(
+        "No email provider configured — OTP for %s is: %s (expires in %d min)",
+        to_email, otp, settings.otp_expire_minutes,
+    )
+    # Raise so auth.py falls back to returning OTP in the response
+    raise RuntimeError("No email provider configured")
