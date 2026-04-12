@@ -265,7 +265,7 @@ export default function ResultsPage() {
       </div>
 
       {/* ══ CONTENT ═════════════════════════════════════════ */}
-      <div className="rp-content">
+      <div key={tab} className="rp-content tab-panel-fade">
 
         {/* ── GAP ANALYSIS ── */}
         {tab === 0 && (

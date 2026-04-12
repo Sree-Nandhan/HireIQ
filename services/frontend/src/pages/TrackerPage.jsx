@@ -216,13 +216,13 @@ export default function TrackerPage() {
         </div>
       ) : (
         <div className="app-cards">
-          {apps.map((app) => {
+          {apps.map((app, i) => {
             const meta   = STATUS_META[app.status] || STATUS_META.pending;
             const latest = app.analyses?.[app.analyses.length - 1];
             const pct    = latest?.match_percentage ?? null;
 
             return (
-              <div key={app.id} className="app-card">
+              <div key={app.id} className="app-card" style={{ animationDelay: `${i * 0.06}s` }}>
                 {/* Card top: avatar + title/company */}
                 <div className="app-card-top">
                   <CompanyAvatar company={app.company} />
