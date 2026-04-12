@@ -87,8 +87,7 @@ def send_otp_email(to_email: str, otp: str) -> None:
                          resp.status_code, to_email, resp.text)
             raise RuntimeError(f"Brevo returned {resp.status_code}: {resp.text}")
         except Exception as exc:
-            logger.error("BREVO: FAILED to=%s error=%r", to_email, exc, exc_info=True)
-            raise
+            logger.error("BREVO: FAILED to=%s error=%r — trying next provider", to_email, exc)
 
     # ── 2. Resend (requires verified domain for arbitrary recipients) ─────────
     if settings.resend_api_key:
@@ -105,10 +104,9 @@ def send_otp_email(to_email: str, otp: str) -> None:
             logger.info("RESEND: email sent to=%s", to_email)
             return
         except Exception as exc:
-            logger.error("RESEND: FAILED to=%s error=%r", to_email, exc, exc_info=True)
-            raise
+            logger.error("RESEND: FAILED to=%s error=%r — trying next provider", to_email, exc)
 
-    # ── 3. SMTP (local dev only — blocked by Railway/most cloud hosts) ────────
+    # ── 3. SMTP ───────────────────────────────────────────────────────────────
     if settings.smtp_user:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Your HireIQ sign-in code"
