@@ -2,10 +2,9 @@
 Sends OTP emails.
 
 Priority order:
-  1. Mailjet  — free (6k/month), no CC, no domain DNS, REST API over HTTPS
-  2. Resend   — fallback if RESEND_API_KEY is set
-  3. SMTP     — local dev only (Railway blocks ports 465/587)
-  4. Log only — dev fallback when nothing is configured
+  1. Resend  — RESEND_API_KEY set → sends via HTTPS, works on Railway
+  2. SMTP    — local dev only (Railway blocks ports 465/587)
+  3. Log only — dev fallback when nothing is configured
 """
 import logging
 import smtplib
@@ -56,37 +55,7 @@ def send_otp_email(to_email: str, otp: str) -> None:
     html  = _build_html(otp)
     plain = _build_plain(otp)
 
-    # ── 1. Mailjet (preferred: free, no CC, REST/HTTPS) ──────────────────────
-    if settings.mailjet_api_key and settings.mailjet_secret_key:
-        try:
-            from mailjet_rest import Client as MailjetClient
-            mj = MailjetClient(
-                auth=(settings.mailjet_api_key, settings.mailjet_secret_key),
-                version="v3.1",
-            )
-            result = mj.send.create(data={
-                "Messages": [{
-                    "From": {
-                        "Email": settings.mailjet_from_email,
-                        "Name":  settings.mailjet_from_name,
-                    },
-                    "To": [{"Email": to_email}],
-                    "Subject": "Your HireIQ sign-in code",
-                    "HTMLPart": html,
-                    "TextPart": plain,
-                }]
-            })
-            if result.status_code == 200:
-                logger.info("MAILJET: email sent to=%s", to_email)
-                return
-            logger.error("MAILJET: unexpected status %d for to=%s body=%s",
-                         result.status_code, to_email, result.json())
-            raise RuntimeError(f"Mailjet returned {result.status_code}")
-        except Exception as exc:
-            logger.error("MAILJET: FAILED to=%s error=%r", to_email, exc, exc_info=True)
-            raise
-
-    # ── 2. Resend (alternative HTTPS provider) ────────────────────────────────
+    # ── 1. Resend (HTTPS, works on Railway) ──────────────────────────────────
     if settings.resend_api_key:
         try:
             import resend
@@ -104,7 +73,7 @@ def send_otp_email(to_email: str, otp: str) -> None:
             logger.error("RESEND: FAILED to=%s error=%r", to_email, exc, exc_info=True)
             raise
 
-    # ── 3. SMTP (local dev only — blocked by Railway/most cloud hosts) ────────
+    # ── 2. SMTP (local dev only — blocked by Railway/most cloud hosts) ────────
     if settings.smtp_user:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Your HireIQ sign-in code"
@@ -128,7 +97,7 @@ def send_otp_email(to_email: str, otp: str) -> None:
             logger.error("SMTP: FAILED to=%s error=%r", to_email, exc, exc_info=True)
             raise
 
-    # ── 4. No provider configured — log the OTP so dev flows still work ───────
+    # ── 3. No provider configured — log the OTP so dev flows still work ───────
     logger.warning(
         "No email provider configured — OTP for %s is: %s (expires in %d min)",
         to_email, otp, settings.otp_expire_minutes,
